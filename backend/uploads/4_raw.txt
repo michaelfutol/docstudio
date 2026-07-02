@@ -1,0 +1,28 @@
+SIMPLIFIED CONSTRUCTION ESTIMATE 11.82 say 12 bags
+79 cu. Mm,
+4.57 cu. m.
+Cement :. 21 x 563
+Sand: 21 x .0375
+Gravel: 21 x .075
+Problem Exercise 1. By the Area Method, determine the quantity of cement,
+sand and gravel of the proposed concrete parking area 6
+inches thick with a general dimensions of 150 x 120 me-
+ters using class “A” mixture.
+420,00 m. 50.00 m. FIGURE 1-9 FLOOR PLAN OF PARKING AREA. 2. By the Volume and Area Method, find the quantity. of ce-
+ment, sand and gravel of the concrete pavement 4” thick
+_as shown in Figure 1-10 using class “B” concrete.
+FIGURE 1-10 CONCRETE PAVEMENT PLAN 18 CONCRETE 1-7 SQUARE CONCRETE COLUMN Estimating the quantity of materials for concrete post or col-
+umn can also be done in two simple ways:
+1. 8y Volume Method and
+2. By Linear Meter Method.
+ILLUSTRATION 1-7 A reinforced concrete square column is 5.00 meters long
+with a cross sectional dimensions of 16 by 16 inches. Deter-
+mine the quantity of cement, sand and gravel using class A
+concrete,
+Cross Section FIGURE 1-11 SQUARE COLUMN SOLUTION :
+A. By Volume Method
+1. Convert first all measurements from inches to meter. 16
+inches = .40 meter ( See Table 1-1)
+2. Solve for the cross sectional area of the column.
+Area: .40 x .40 = .16 sq.m.
+3. Find the volume of the column. 19
