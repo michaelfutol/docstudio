@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ChevronLeft, Save, CheckCircle, AlertTriangle, ArrowRight, ChevronRight } from "lucide-react";
+import { ChevronLeft, Save, CheckCircle, AlertTriangle, ArrowRight, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import Link from "next/link";
 import { fetchDocument } from "@/lib/api";
 import { DocumentViewer } from "@/components/studio/document-viewer";
@@ -21,6 +21,10 @@ function OCRStudioContent() {
   const [hoveredLineIndex, setHoveredLineIndex] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [ocrLines, setOcrLines] = useState<any[]>([]);
+  
+  // Zoom states
+  const [sourceZoom, setSourceZoom] = useState(1);
+  const [transcriptZoom, setTranscriptZoom] = useState(1);
   
   // Refs for auto-scrolling
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -164,7 +168,14 @@ function OCRStudioContent() {
         
         {/* Left: Source Image */}
         <div className="card-premium flex flex-col overflow-hidden bg-slate-50/50">
-          <div className="p-3 border-b border-slate-100 bg-white/50 text-sm font-semibold tracking-tight text-slate-700">Source Document</div>
+          <div className="p-3 border-b border-slate-100 bg-white/50 text-sm font-semibold tracking-tight text-slate-700 flex justify-between items-center">
+            <span>Source Document</span>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSourceZoom(z => Math.max(0.1, z / 1.2))}><ZoomOut className="h-3 w-3" /></Button>
+              <span className="text-xs w-10 text-center font-mono">{Math.round(sourceZoom * 100)}%</span>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSourceZoom(z => Math.min(5, z * 1.2))}><ZoomIn className="h-3 w-3" /></Button>
+            </div>
+          </div>
           {page?.image_path ? (
             <DocumentViewer
               imagePath={page.image_path}
@@ -174,6 +185,8 @@ function OCRStudioContent() {
               hoveredLineIndex={hoveredLineIndex}
               onLineClick={handleLineClick}
               onLineHover={setHoveredLineIndex}
+              scale={sourceZoom}
+              setScale={setSourceZoom}
             />
           ) : (
             <div className="flex-1 overflow-auto flex items-center justify-center bg-slate-200/50">
@@ -188,7 +201,14 @@ function OCRStudioContent() {
         {/* Right: Editable OCR Text */}
         <div className="card-premium flex flex-col overflow-hidden">
           <div className="p-3 border-b border-slate-100 bg-white/50 text-sm font-semibold tracking-tight text-slate-700 flex justify-between items-center">
-            <span>OCR Transcript</span>
+            <div className="flex items-center gap-2">
+              <span>OCR Transcript</span>
+              <div className="flex items-center gap-1 ml-4 border-l pl-4">
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setTranscriptZoom(z => Math.max(0.5, z - 0.25))}><ZoomOut className="h-3 w-3" /></Button>
+                <span className="text-xs w-10 text-center font-mono">{Math.round(transcriptZoom * 100)}%</span>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setTranscriptZoom(z => Math.min(3, z + 0.25))}><ZoomIn className="h-3 w-3" /></Button>
+              </div>
+            </div>
             {linesReviewCount > 0 ? (
               <span className="text-xs flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200/50">
                 <AlertTriangle className="h-3 w-3" />
@@ -202,39 +222,49 @@ function OCRStudioContent() {
             )}
           </div>
           <div className="flex-1 p-6 overflow-auto bg-slate-50/30">
-            <div className="space-y-3 bg-white p-8 shadow-sm border border-slate-200/60 rounded-xl min-h-full font-mono text-sm leading-relaxed text-slate-700">
-              {ocrLines.map((line: any, idx: number) => (
-                <div 
-                  key={idx} 
-                  ref={(el) => { lineRefs.current[idx] = el; }}
-                  onMouseEnter={() => setHoveredLineIndex(idx)}
-                  onMouseLeave={() => setHoveredLineIndex(null)}
-                  className={`p-1.5 rounded-md border-l-[3px] pl-3 transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:bg-primary/5 ${
-                    hoveredLineIndex === idx ? "bg-primary/5 ring-1 ring-primary/20" : ""
-                  } ${
-                    line.needsReview || line.confidence < 0.75 
-                      ? "border-red-400 bg-red-50/50 hover:bg-red-50 text-red-900" 
-                      : line.confidence < 0.90 
-                        ? "border-amber-400 hover:bg-amber-50/30"
-                        : "border-slate-200 hover:bg-slate-50"
-                  }`}
-                >
-                  <input 
-                    type="text" 
-                    className="w-full bg-transparent outline-none"
-                    value={line.text}
-                    onChange={(e) => handleLineChange(idx, e.target.value)}
-                  />
-                  {line.confidence < 0.90 && (
-                    <div className="text-[10px] text-slate-400 text-right mt-1 font-sans flex justify-end">
-                      <span className={line.confidence < 0.75 ? "text-red-500" : "text-amber-500"}>
-                        Conf: {(line.confidence * 100).toFixed(0)}%
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            {ocrLines.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <p className="text-slate-500 font-medium mb-2">No readable text detected.</p>
+                <p className="text-slate-400 text-sm max-w-sm">If you uploaded an image or scanned document, our backend skipped raw text extraction to save time. Don't worry, our Gemini AI will still easily read everything during the <span className="font-semibold text-primary">Extraction</span> stage! Click "Approve & Continue" to proceed.</p>
+              </div>
+            ) : (
+              <div 
+                className="space-y-3 bg-white p-8 shadow-sm border border-slate-200/60 rounded-xl min-h-full font-mono text-sm leading-relaxed text-slate-700 transition-all origin-top-left"
+                style={{ transform: `scale(${transcriptZoom})`, width: `${100 / transcriptZoom}%`, marginBottom: `${(transcriptZoom - 1) * 100}%` }}
+              >
+                {ocrLines.map((line: any, idx: number) => (
+                  <div 
+                    key={idx} 
+                    ref={(el) => { lineRefs.current[idx] = el; }}
+                    onMouseEnter={() => setHoveredLineIndex(idx)}
+                    onMouseLeave={() => setHoveredLineIndex(null)}
+                    className={`p-1.5 rounded-md border-l-[3px] pl-3 transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:bg-primary/5 ${
+                      hoveredLineIndex === idx ? "bg-primary/5 ring-1 ring-primary/20" : ""
+                    } ${
+                      line.needsReview || line.confidence < 0.75 
+                        ? "border-red-400 bg-red-50/50 hover:bg-red-50 text-red-900" 
+                        : line.confidence < 0.90 
+                          ? "border-amber-400 hover:bg-amber-50/30"
+                          : "border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <input 
+                      type="text" 
+                      className="w-full bg-transparent outline-none"
+                      value={line.text}
+                      onChange={(e) => handleLineChange(idx, e.target.value)}
+                    />
+                    {line.confidence < 0.90 && (
+                      <div className="text-[10px] text-slate-400 text-right mt-1 font-sans flex justify-end">
+                        <span className={line.confidence < 0.75 ? "text-red-500" : "text-amber-500"}>
+                          Conf: {(line.confidence * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

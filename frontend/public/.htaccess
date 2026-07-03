@@ -1,0 +1,13 @@
+Options -Indexes
+
+RewriteEngine On
+
+# Try to serve .html files directly when requested without extension
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.html -f
+RewriteRule ^(.*)$ $1.html [L]
+
+# Prevent directory listing and serve .html instead of the directory
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteCond %{DOCUMENT_ROOT}/$1.html -f
+RewriteRule ^(.*)/?$ $1.html [L]

@@ -3,32 +3,46 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Database, AlertCircle, CheckCircle, Activity, Zap } from "lucide-react";
+import { FileText, Plus, Database, AlertCircle, CheckCircle, Activity, Zap, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { fetchProjects, fetchStats } from "@/lib/api";
+import { fetchProjects, fetchStats, deleteDocument } from "@/lib/api";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadStats() {
-      try {
-        const data = await fetchStats();
-        setStats(data);
-        
-        const projData = await fetchProjects();
-        setProjects(projData.slice(0, 5)); // Last 5 projects
-        
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
+  const loadStats = async () => {
+    try {
+      const data = await fetchStats();
+      setStats(data);
+      
+      const projData = await fetchProjects();
+      setProjects(projData.slice(0, 5)); // Last 5 projects
+      
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     loadStats();
   }, []);
+
+  const handleDeleteDocument = async (id: number) => {
+    if (confirm("Are you sure you want to delete this document?")) {
+      try {
+        await deleteDocument(id);
+        // Refresh data
+        loadStats();
+      } catch (e) {
+        alert("Failed to delete document");
+        console.error(e);
+      }
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -171,7 +185,7 @@ export default function DashboardPage() {
                 ))
               ) : stats?.recent_documents?.length > 0 ? (
                 stats.recent_documents.map((doc: any, i: number) => (
-                  <div key={i} className="flex items-center gap-3 py-2">
+                  <div key={i} className="flex items-center gap-3 py-2 group">
                     <div className="bg-slate-100 p-2 rounded-full text-slate-500">
                       <FileText className="h-4 w-4" />
                     </div>
@@ -179,9 +193,19 @@ export default function DashboardPage() {
                       <p className="text-sm font-medium text-slate-800 truncate">{doc.filename}</p>
                       <p className="text-xs text-slate-500 capitalize">{doc.status.replace('_', ' ')}</p>
                     </div>
-                    <Link href={doc.status === 'uploaded' || doc.status === 'processing' || doc.status === 'processed' ? `/studio/ocr?docId=${doc.id}` : `/studio/builder?docId=${doc.id}`}>
-                      <Button variant="ghost" size="sm" className="text-xs text-primary">View</Button>
-                    </Link>
+                    <div className="flex items-center gap-1">
+                      <Link href={doc.status === 'uploaded' || doc.status === 'processing' || doc.status === 'processed' ? `/studio/ocr?docId=${doc.id}` : `/studio/builder?docId=${doc.id}`}>
+                        <Button variant="ghost" size="sm" className="text-xs text-primary">View</Button>
+                      </Link>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleDeleteDocument(doc.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))
               ) : (

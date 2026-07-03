@@ -12,9 +12,17 @@ export async function fetchProjects() {
   return res.json();
 }
 
-export async function fetchDocument(docId: string | number) {
-  const res = await fetch(`${API_BASE_URL}/documents/${docId}`);
+export async function fetchDocument(documentId: string | number) {
+  const res = await fetch(`${API_BASE_URL}/documents/${documentId}`);
   if (!res.ok) throw new Error("Failed to fetch document");
+  return res.json();
+}
+
+export async function deleteDocument(documentId: string | number) {
+  const res = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error("Failed to delete document");
   return res.json();
 }
 
@@ -39,7 +47,7 @@ export function uploadDocument(file: File, projectId?: number | string, onProgre
     const formData = new FormData();
     formData.append('file', file);
     
-    let url = `${API_BASE_URL}/documents`;
+    let url = `${API_BASE_URL}/documents/`;
     if (projectId) {
       url += `?project_id=${projectId}`;
     }

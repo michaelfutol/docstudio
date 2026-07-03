@@ -125,3 +125,45 @@ def export_text(document_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Raw text not found. Ensure OCR has completed.")
         
     return FileResponse(txt_path, media_type="text/plain", filename=f"{doc.filename}_raw.txt")
+
+@router.delete("/{document_id}")
+def delete_document(document_id: int, db: Session = Depends(get_db)):
+    doc = db.query(models.Document).filter(models.Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Try to delete associated files physically
+    try:
+        base_dir = os.path.dirname(doc.file_path)
+        
+        # Original file
+        if os.path.exists(doc.file_path):
+            os.remove(doc.file_path)
+            
+        # Converted pdf (if image)
+        conv_pdf = os.path.join(base_dir, f"{doc.id}_converted.pdf")
+        if os.path.exists(conv_pdf):
+            os.remove(conv_pdf)
+            
+        # Raw text
+        raw_txt = os.path.join(base_dir, f"{doc.id}_raw.txt")
+        if os.path.exists(raw_txt):
+            os.remove(raw_txt)
+            
+        # Clean up any generated page images
+        base_name_pdf = os.path.basename(doc.file_path).replace('.pdf', '')
+        base_name_img = os.path.basename(doc.file_path).rsplit('.', 1)[0]
+        
+        for file in os.listdir(base_dir):
+            if file.startswith(base_name_pdf + "_page_") or file.startswith(base_name_img + "_page_"):
+                os.remove(os.path.join(base_dir, file))
+                
+    except Exception as e:
+        print(f"Error during file cleanup: {e}")
+        # We proceed to delete from DB even if file cleanup fails partially
+        pass
+
+    db.delete(doc)
+    db.commit()
+    
+    return {"message": "Document deleted successfully"}

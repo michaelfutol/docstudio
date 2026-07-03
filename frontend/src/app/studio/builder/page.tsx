@@ -3,7 +3,7 @@
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ChevronLeft, Database, Check, AlertCircle, ArrowRight, Play, Download, FileText } from "lucide-react";
+import { ChevronLeft, Database, Check, AlertCircle, ArrowRight, Play, Download, FileText, ZoomIn, ZoomOut } from "lucide-react";
 import Link from "next/link";
 import { fetchTemplates, triggerExtraction, fetchDocument, fetchRecord, API_BASE_URL } from "@/lib/api";
 import { DocumentViewer } from "@/components/studio/document-viewer";
@@ -23,6 +23,7 @@ function BuilderContent() {
   const [doc, setDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [hoveredLineIndex, setHoveredLineIndex] = useState<number | null>(null);
+  const [sourceZoom, setSourceZoom] = useState(1);
 
   useEffect(() => {
     async function init() {
@@ -115,8 +116,13 @@ function BuilderContent() {
         
         {/* Left: Document Viewer */}
         <div className="card-premium flex flex-col overflow-hidden bg-slate-50/50">
-          <div className="p-3 border-b border-slate-100 bg-white/50 text-sm font-semibold tracking-tight text-slate-700">
-            Source Document
+          <div className="p-3 border-b border-slate-100 bg-white/50 text-sm font-semibold tracking-tight text-slate-700 flex justify-between items-center">
+            <span>Source Document</span>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSourceZoom(z => Math.max(0.1, z / 1.2))}><ZoomOut className="h-3 w-3" /></Button>
+              <span className="text-xs w-10 text-center font-mono">{Math.round(sourceZoom * 100)}%</span>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSourceZoom(z => Math.min(5, z * 1.2))}><ZoomIn className="h-3 w-3" /></Button>
+            </div>
           </div>
           {page?.image_path ? (
             <DocumentViewer
@@ -127,6 +133,8 @@ function BuilderContent() {
               hoveredLineIndex={hoveredLineIndex}
               onLineClick={(idx) => setHoveredLineIndex(idx)}
               onLineHover={setHoveredLineIndex}
+              scale={sourceZoom}
+              setScale={setSourceZoom}
             />
           ) : (
             <div className="flex-1 overflow-auto flex items-center justify-center bg-slate-200/50">

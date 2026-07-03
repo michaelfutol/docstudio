@@ -51,6 +51,8 @@ export function ExportModal({ isOpen, onClose, title, description, onExport }: E
           >
             <option value="json">JSON (.json)</option>
             <option value="csv">CSV (.csv)</option>
+            <option value="txt">Text (.txt)</option>
+            <option value="pdf">Merged PDF (.pdf)</option>
           </select>
         </div>
         

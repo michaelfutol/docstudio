@@ -35,10 +35,11 @@ export function DocumentViewer({
   imageHeight,
   hoveredLineIndex,
   onLineClick,
-  onLineHover
-}: DocumentViewerProps) {
+  onLineHover,
+  scale,
+  setScale
+}: DocumentViewerProps & { scale: number, setScale: (s: number) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // Calculate base scale to fit the image
@@ -62,10 +63,7 @@ export function DocumentViewer({
 
     observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, [imageWidth, imageHeight]);
-
-  const handleZoomIn = () => setScale(s => Math.min(s * 1.2, 5));
-  const handleZoomOut = () => setScale(s => Math.max(s / 1.2, 0.1));
+  }, [imageWidth, imageHeight, scale, setScale]);
 
   // Determine bbox color based on confidence and hover state
   const getBBoxStyle = (line: OCRLine, index: number) => {
@@ -105,19 +103,6 @@ export function DocumentViewer({
 
   return (
     <div className="flex flex-col h-full bg-slate-200/50 relative" ref={containerRef}>
-      {/* Toolbar */}
-      <div className="absolute bottom-4 right-4 flex gap-1 bg-white p-1 rounded-md shadow-md border border-slate-200 z-10">
-        <Button variant="ghost" size="icon" onClick={handleZoomOut} className="h-8 w-8 text-slate-500">
-          <ZoomOut className="h-4 w-4" />
-        </Button>
-        <div className="flex items-center justify-center text-xs font-mono text-slate-500 w-12">
-          {Math.round(scale * 100)}%
-        </div>
-        <Button variant="ghost" size="icon" onClick={handleZoomIn} className="h-8 w-8 text-slate-500">
-          <ZoomIn className="h-4 w-4" />
-        </Button>
-      </div>
-
       {/* Image Container with Scrolling */}
       <div className="flex-1 overflow-auto flex items-center justify-center p-4">
         <div 
