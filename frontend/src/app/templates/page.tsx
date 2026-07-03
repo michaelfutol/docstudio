@@ -48,6 +48,7 @@ export default function TemplatesPage() {
     }
   }
 
+  const handleCreateNew = () => {
     setEditingTemplate(null);
     setName("");
     setBuilderMode("visual");
