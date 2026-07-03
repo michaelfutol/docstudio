@@ -73,7 +73,7 @@ def startup_tasks():
         db.execute(text("UPDATE templates SET industry = 'Accounting' WHERE name = 'Invoice' OR name = 'Accounting: Invoice Line Items'"))
         db.execute(text("UPDATE templates SET industry = 'General' WHERE name = 'Receipt' OR name = 'General Document' OR name = 'Standard Text Extraction'"))
         
-        schema = """{"type": "array", "items": {"type": "object", "properties": {"Description": {"type": "string"}, "Quantity": {"type": "number"}, "Unit Price": {"type": "number"}, "Total Price": {"type": "number"}}}}"""
+        schema = """{"type": "object", "properties": {"Supplier_Name": {"type": "string"}, "Date": {"type": "string"}, "Invoice_Receipt_Number": {"type": "string"}, "Tax_Amount": {"type": "number"}, "Total_Amount": {"type": "number"}, "data": {"type": "array", "items": {"type": "object", "properties": {"Description": {"type": "string"}, "Quantity": {"type": "number"}, "Unit Price": {"type": "number"}, "Total Price": {"type": "number"}}}}}}"""
         db.execute(text("UPDATE templates SET schema_json = :schema WHERE name = 'Accounting: Invoice Line Items'"), {"schema": schema})
         db.commit()
     except Exception as e:
@@ -124,14 +124,24 @@ def startup_tasks():
                     name="Accounting: Invoice Line Items",
                     industry="Accounting",
                     schema_json={
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "Description": {"type": "string"},
-                                "Quantity": {"type": "number"},
-                                "Unit Price": {"type": "number"},
-                                "Total Price": {"type": "number"}
+                        "type": "object",
+                        "properties": {
+                            "Supplier_Name": {"type": "string"},
+                            "Date": {"type": "string"},
+                            "Invoice_Receipt_Number": {"type": "string"},
+                            "Tax_Amount": {"type": "number"},
+                            "Total_Amount": {"type": "number"},
+                            "data": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "Description": {"type": "string"},
+                                        "Quantity": {"type": "number"},
+                                        "Unit Price": {"type": "number"},
+                                        "Total Price": {"type": "number"}
+                                    }
+                                }
                             }
                         }
                     },

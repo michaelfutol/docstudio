@@ -272,9 +272,15 @@ function BuilderContent() {
                   </Button>
                   <Button 
                     className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                    onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export?format=xlsx`, '_blank')}
+                  >
+                    <Download className="mr-2 h-4 w-4" /> Download Excel (.xlsx)
+                  </Button>
+                  <Button 
+                    variant="outline"
                     onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export?format=csv`, '_blank')}
                   >
-                    <Download className="mr-2 h-4 w-4" /> CSV (Excel)
+                    <Download className="mr-2 h-4 w-4" /> Raw CSV
                   </Button>
                 </div>
               </div>
