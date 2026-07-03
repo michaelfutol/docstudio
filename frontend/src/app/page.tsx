@@ -1,220 +1,110 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { HardHat, Calculator, Scale, FileText, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Database, AlertCircle, CheckCircle, Activity, Zap, Trash2 } from "lucide-react";
-import Link from "next/link";
-import { fetchProjects, fetchStats, deleteDocument } from "@/lib/api";
 
-export default function DashboardPage() {
-  const [stats, setStats] = useState<any>(null);
-  const [projects, setProjects] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function IndustryLandingPage() {
+  const router = useRouter();
 
-  const loadStats = async () => {
-    try {
-      const data = await fetchStats();
-      setStats(data);
-      
-      const projData = await fetchProjects();
-      setProjects(projData.slice(0, 5)); // Last 5 projects
-      
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+  // If already selected, maybe we want to redirect them? 
+  // Let's not auto-redirect so they can change their mind, or maybe we do?
+  // Let's keep it simple: forcing them to select on root page is fine, or we can check if it exists.
+  
+  // Uncomment to auto-redirect if already selected (Optional)
+  // useEffect(() => {
+  //   const saved = localStorage.getItem('selectedIndustry');
+  //   if (saved) router.push('/dashboard');
+  // }, []);
+
+  const handleSelect = (industry: string) => {
+    localStorage.setItem('selectedIndustry', industry);
+    router.push('/dashboard');
   };
 
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  const handleDeleteDocument = async (id: number) => {
-    if (confirm("Are you sure you want to delete this document?")) {
-      try {
-        await deleteDocument(id);
-        // Refresh data
-        loadStats();
-      } catch (e) {
-        alert("Failed to delete document");
-        console.error(e);
-      }
+  const industries = [
+    {
+      id: "Engineering",
+      title: "Engineering & Construction",
+      desc: "Automatically extract quantities, door schedules, and title blocks from architectural plans.",
+      icon: HardHat,
+      color: "bg-blue-50 text-blue-600 ring-blue-500/20",
+      border: "hover:border-blue-500",
+    },
+    {
+      id: "Accounting",
+      title: "Accounting & Finance",
+      desc: "Extract vendor line items and totals from messy receipts and invoices instantly.",
+      icon: Calculator,
+      color: "bg-emerald-50 text-emerald-600 ring-emerald-500/20",
+      border: "hover:border-emerald-500",
+    },
+    {
+      id: "Legal",
+      title: "Legal & Compliance",
+      desc: "Parse contracts, extract key clauses, and digitize case files into searchable databases.",
+      icon: Scale,
+      color: "bg-amber-50 text-amber-600 ring-amber-500/20",
+      border: "hover:border-amber-500",
+    },
+    {
+      id: "General",
+      title: "Publishing & General",
+      desc: "Recreate books, digitize historical archives, or extract standard text from any document.",
+      icon: FileText,
+      color: "bg-purple-50 text-purple-600 ring-purple-500/20",
+      border: "hover:border-purple-500",
     }
-  };
+  ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Overview of your document processing tasks.
-          </p>
+    <div className="min-h-[80vh] flex flex-col items-center justify-center space-y-12 animate-in fade-in zoom-in-95 duration-500">
+      
+      <div className="text-center max-w-2xl mx-auto space-y-4">
+        <div className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-primary/10 text-primary mb-2">
+          Welcome to Document Intelligence Studio
         </div>
-        <Link href="/projects">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New Project
-          </Button>
-        </Link>
+        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900">
+          What are you extracting today?
+        </h1>
+        <p className="text-lg text-slate-500 font-medium">
+          Select your industry to load your optimized AI templates and workflows.
+        </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        {/* Total Documents */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Documents</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="h-8 w-16 bg-slate-200 animate-pulse rounded"></div>
-            ) : (
-              <div className="text-2xl font-bold">{stats?.total_documents || 0}</div>
-            )}
-            <p className="text-xs text-muted-foreground mt-1">Across all projects</p>
-          </CardContent>
-        </Card>
-
-        {/* Needs Review */}
-        <Card className="shadow-sm border-amber-100 bg-amber-50/10">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Needs Review</CardTitle>
-            <AlertCircle className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="h-8 w-16 bg-amber-200 animate-pulse rounded"></div>
-            ) : (
-              <div className="text-2xl font-bold text-amber-600">{stats?.pending_review_count || 0}</div>
-            )}
-            <p className="text-xs text-amber-600/70 mt-1">Pending manual validation</p>
-          </CardContent>
-        </Card>
-
-        {/* STP Rate */}
-        <Card className="shadow-sm border-emerald-100 bg-emerald-50/10">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">STP Rate</CardTitle>
-            <Zap className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="h-8 w-16 bg-emerald-200 animate-pulse rounded"></div>
-            ) : (
-              <div className="text-2xl font-bold text-emerald-600">
-                {((stats?.stp_rate || 0) * 100).toFixed(1)}%
+      <div className="grid md:grid-cols-2 gap-6 w-full max-w-4xl px-4">
+        {industries.map((ind) => {
+          const Icon = ind.icon;
+          return (
+            <button 
+              key={ind.id}
+              onClick={() => handleSelect(ind.id)}
+              className={`group flex flex-col items-start p-6 text-left bg-white rounded-2xl shadow-sm border-2 border-slate-100 transition-all duration-300 hover:shadow-lg ${ind.border} relative overflow-hidden`}
+            >
+              <div className="absolute top-0 right-0 p-6 opacity-0 translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                <ArrowRight className="h-6 w-6 text-slate-400" />
               </div>
-            )}
-            <p className="text-xs text-emerald-600/70 mt-1">Straight-through processing</p>
-          </CardContent>
-        </Card>
-
-        {/* Active Templates */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Templates</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="h-8 w-16 bg-slate-200 animate-pulse rounded"></div>
-            ) : (
-              <div className="text-2xl font-bold">{stats?.total_templates || 0}</div>
-            )}
-            <p className="text-xs text-muted-foreground mt-1">Configured schemas</p>
-          </CardContent>
-        </Card>
+              
+              <div className={`p-4 rounded-2xl ring-1 mb-6 transition-transform group-hover:scale-110 ${ind.color}`}>
+                <Icon className="h-8 w-8" />
+              </div>
+              
+              <h3 className="text-xl font-bold text-slate-800 mb-2">{ind.title}</h3>
+              <p className="text-slate-500 text-sm leading-relaxed">
+                {ind.desc}
+              </p>
+            </button>
+          )
+        })}
+      </div>
+      
+      <div className="text-center mt-12">
+        <Button variant="ghost" onClick={() => handleSelect('All')} className="text-slate-400 hover:text-slate-600">
+          Skip and view all templates &rarr;
+        </Button>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card className="col-span-1 shadow-sm">
-          <CardHeader>
-            <CardTitle>Recent Projects</CardTitle>
-            <CardDescription>Your latest document processing projects.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {loading ? (
-                Array(3).fill(0).map((_, i) => (
-                  <div key={i} className="flex justify-between items-center py-2">
-                    <div className="space-y-2">
-                      <div className="h-4 w-32 bg-slate-200 animate-pulse rounded"></div>
-                      <div className="h-3 w-20 bg-slate-100 animate-pulse rounded"></div>
-                    </div>
-                    <div className="h-6 w-16 bg-slate-100 animate-pulse rounded-full"></div>
-                  </div>
-                ))
-              ) : projects.length > 0 ? (
-                projects.map((project, i) => (
-                  <div key={i} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium leading-none text-slate-800">{project.name}</p>
-                      <p className="text-xs text-slate-500">{project.document_count} documents</p>
-                    </div>
-                    <div className="text-xs font-medium px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full">
-                      {project.status}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-sm text-slate-500 py-4 text-center">No projects created yet.</div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-1 shadow-sm">
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Latest documents added to the pipeline.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {loading ? (
-                Array(4).fill(0).map((_, i) => (
-                  <div key={i} className="flex gap-3 py-2">
-                    <div className="h-8 w-8 bg-slate-200 animate-pulse rounded-full shrink-0"></div>
-                    <div className="space-y-2 flex-1">
-                      <div className="h-4 w-full bg-slate-200 animate-pulse rounded"></div>
-                      <div className="h-3 w-24 bg-slate-100 animate-pulse rounded"></div>
-                    </div>
-                  </div>
-                ))
-              ) : stats?.recent_documents?.length > 0 ? (
-                stats.recent_documents.map((doc: any, i: number) => (
-                  <div key={i} className="flex items-center gap-3 py-2 group">
-                    <div className="bg-slate-100 p-2 rounded-full text-slate-500">
-                      <FileText className="h-4 w-4" />
-                    </div>
-                    <div className="space-y-1 flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 truncate">{doc.filename}</p>
-                      <p className="text-xs text-slate-500 capitalize">{doc.status.replace('_', ' ')}</p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Link href={doc.status === 'uploaded' || doc.status === 'processing' || doc.status === 'processed' ? `/studio/ocr?docId=${doc.id}` : `/studio/builder?docId=${doc.id}`}>
-                        <Button variant="ghost" size="sm" className="text-xs text-primary">View</Button>
-                      </Link>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handleDeleteDocument(doc.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-sm text-slate-500 py-4 text-center">No documents uploaded yet.</div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

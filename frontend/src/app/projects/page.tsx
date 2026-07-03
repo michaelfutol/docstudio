@@ -20,6 +20,13 @@ export default function ProjectsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("All");
   
+  useEffect(() => {
+    const savedIndustry = localStorage.getItem('selectedIndustry');
+    if (savedIndustry) {
+      setActiveTab(savedIndustry);
+    }
+  }, []);
+  
   // Upload state
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
