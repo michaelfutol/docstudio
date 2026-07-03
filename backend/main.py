@@ -79,6 +79,17 @@ def startup_tasks():
     except Exception as e:
         print(f"Error fixing seed data: {e}")
         db.rollback()
+        
+    # 1.6 Cleanup orphaned documents (from projects that were deleted)
+    try:
+        orphans = db.query(models.Document).filter(~models.Document.project_id.in_(db.query(models.Project.id))).all()
+        if orphans:
+            for doc in orphans:
+                db.delete(doc)
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Error deleting orphaned documents: {e}")
 
     # 2. Seed Default Templates
     try:

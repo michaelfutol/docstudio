@@ -78,6 +78,8 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
                     os.remove(page.image_path)
         except:
             pass
+            
+        db.delete(doc)
 
     db.delete(project)
     db.commit()
