@@ -86,11 +86,22 @@ def export_searchable_pdf(document_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
         
-    pdf_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_searchable.pdf")
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail="Searchable PDF not found. Ensure OCR has completed.")
-        
-    return FileResponse(pdf_path, media_type="application/pdf", filename=f"{doc.filename}_searchable.pdf")
+    file_ext = os.path.splitext(doc.file_path)[1].lower()
+    if file_ext == ".pdf":
+        return FileResponse(doc.file_path, media_type="application/pdf", filename=f"{doc.filename}")
+    else:
+        # It's an image, convert to basic PDF for export
+        pdf_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_converted.pdf")
+        if not os.path.exists(pdf_path):
+            from PIL import Image
+            try:
+                img = Image.open(doc.file_path)
+                img.convert('RGB').save(pdf_path)
+            except Exception as e:
+                print(f"Error converting image to PDF: {e}")
+                raise HTTPException(status_code=500, detail="Failed to generate PDF")
+                
+        return FileResponse(pdf_path, media_type="application/pdf", filename=f"{doc.filename}.pdf")
 
 @router.get("/{document_id}/export/text")
 def export_text(document_id: int, db: Session = Depends(get_db)):
@@ -105,7 +116,7 @@ def export_text(document_id: int, db: Session = Depends(get_db)):
         return Response(
             content=text_content,
             media_type="text/plain",
-            headers={"Content-Disposition": f"attachment; filename={doc.filename}_transcription.txt"}
+            headers={"Content-Disposition": f'attachment; filename="{doc.filename}_transcription.txt"'}
         )
         
     # Fallback to raw OCR text
