@@ -24,6 +24,14 @@ function BuilderContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const [hoveredLineIndex, setHoveredLineIndex] = useState<number | null>(null);
   const [sourceZoom, setSourceZoom] = useState(1);
+  const [activeIndustry, setActiveIndustry] = useState<string>("All");
+
+  useEffect(() => {
+    const savedIndustry = localStorage.getItem('selectedIndustry');
+    if (savedIndustry) {
+      setActiveIndustry(savedIndustry);
+    }
+  }, []);
 
   useEffect(() => {
     async function init() {
@@ -150,7 +158,9 @@ function BuilderContent() {
                 onChange={e => setSelectedTemplateId(e.target.value)}
               >
                 <option value="" disabled>Select a template...</option>
-                {templates.map(t => (
+                {templates
+                  .filter(t => activeIndustry === "All" || t.industry === activeIndustry || t.industry === "General" || !t.industry)
+                  .map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>

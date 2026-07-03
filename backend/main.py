@@ -100,20 +100,14 @@ def startup_tasks():
                     name="Accounting: Invoice Line Items",
                     industry="Accounting",
                     schema_json={
-                        "type": "object",
-                        "properties": {
-                            "data": {
-                                "type": "array",
-                                "description": "A list of line items from an invoice or receipt.",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "Description": {"type": "string"},
-                                        "Quantity": {"type": "number"},
-                                        "Unit Price": {"type": "number"},
-                                        "Total Price": {"type": "number"}
-                                    }
-                                }
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "Description": {"type": "string"},
+                                "Quantity": {"type": "number"},
+                                "Unit Price": {"type": "number"},
+                                "Total Price": {"type": "number"}
                             }
                         }
                     },
