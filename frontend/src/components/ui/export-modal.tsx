@@ -50,7 +50,7 @@ export function ExportModal({ isOpen, onClose, title, description, onExport }: E
             className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
           >
             <option value="json">JSON (.json)</option>
-            <option value="csv">CSV (.csv)</option>
+            <option value="csv">Excel / CSV Spreadsheet (.csv)</option>
             <option value="txt">Text (.txt)</option>
             <option value="pdf">Merged PDF (.pdf)</option>
           </select>

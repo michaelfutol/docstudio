@@ -45,6 +45,79 @@ app.include_router(export.router)
 def read_root():
     return {"message": "Welcome to Document Intelligence Studio API"}
 
+@app.on_event("startup")
+def seed_default_templates():
+    from database import SessionLocal
+    import models
+    db = SessionLocal()
+    try:
+        if db.query(models.Template).filter(models.Template.name == "Engineering: Material Schedule").first() is None:
+            templates = [
+                models.Template(
+                    name="Engineering: Material Schedule",
+                    schema_json={
+                        "type": "object",
+                        "properties": {
+                            "data": {
+                                "type": "array",
+                                "description": "A tabular list of materials extracted from the drawing or schedule.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "Item No": {"type": "string"},
+                                        "Description": {"type": "string"},
+                                        "Quantity": {"type": "number"},
+                                        "Unit": {"type": "string"},
+                                        "Dimensions": {"type": "string"},
+                                        "Notes": {"type": "string"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    validation_rules={"is_tabular": True}
+                ),
+                models.Template(
+                    name="Accounting: Invoice Line Items",
+                    schema_json={
+                        "type": "object",
+                        "properties": {
+                            "data": {
+                                "type": "array",
+                                "description": "A list of line items from an invoice or receipt.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "Description": {"type": "string"},
+                                        "Quantity": {"type": "number"},
+                                        "Unit Price": {"type": "number"},
+                                        "Total Price": {"type": "number"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    validation_rules={"is_tabular": True}
+                ),
+                models.Template(
+                    name="Standard Text Extraction",
+                    schema_json={
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "Document title"},
+                            "summary": {"type": "string", "description": "Brief summary of the document"}
+                        }
+                    },
+                    validation_rules={"is_tabular": False}
+                )
+            ]
+            db.bulk_save_objects(templates)
+            db.commit()
+    except Exception as e:
+        print(f"Error seeding templates: {e}")
+    finally:
+        db.close()
+
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}

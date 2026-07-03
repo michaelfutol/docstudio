@@ -87,6 +87,8 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
     schema = template.schema_json if template.schema_json else {"type": "object", "properties": {}}
     is_transcription = "full_transcription" in schema.get("properties", {})
     
+    is_tabular = template.validation_rules and template.validation_rules.get("is_tabular", False)
+    
     if is_transcription:
         prompt = f"""
         You are a highly precise document transcription assistant.
@@ -102,9 +104,19 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
         {full_text}
         """
     else:
+        tabular_instructions = ""
+        if is_tabular:
+            tabular_instructions = """
+        CRITICAL TABULAR EXTRACTION RULES:
+        This is a tabular data extraction task (e.g. Material Schedule, Invoice Line Items).
+        You MUST extract every single row or line item found in the document into the 'data' array.
+        Do NOT summarize or miss any rows. Output the data exactly as it appears in the table.
+        """
+            
         prompt = f"""
         You are a data extraction assistant.
         Extract the structured data from the following document text according to the provided JSON schema.
+        {tabular_instructions}
         Also, please provide a 'field_confidences' object at the root of your JSON response, mapping each extracted field key (including nested keys using dot notation) to a confidence score between 0.0 and 1.0.
         
         Raw Document Text:
