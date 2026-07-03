@@ -61,16 +61,16 @@ export function Header() {
 
           {showProfile && (
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-100 py-1 z-50">
-              <button className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <button onClick={() => alert("Coming soon!")} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                 <UserCircle className="w-4 h-4" />
                 My Profile
               </button>
-              <button className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <button onClick={() => alert("Coming soon!")} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                 <Settings className="w-4 h-4" />
                 Settings
               </button>
               <div className="border-t border-slate-100 my-1"></div>
-              <button className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+              <button onClick={() => alert("Coming soon!")} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
                 <LogOut className="w-4 h-4" />
                 Sign Out
               </button>

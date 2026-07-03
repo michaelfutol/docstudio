@@ -3,11 +3,11 @@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Folder, Download, UploadCloud, Loader2, X } from "lucide-react";
+import { Plus, Search, Folder, Download, UploadCloud, Loader2, X, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useEffect } from "react";
-import { uploadDocument, fetchProjects, createProject, exportProject } from "@/lib/api";
+import { uploadDocument, fetchProjects, createProject, exportProject, deleteProject } from "@/lib/api";
 import { ExportModal } from "@/components/ui/export-modal";
 
 export default function ProjectsPage() {
@@ -113,7 +113,18 @@ export default function ProjectsPage() {
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (e) {
-      throw e;
+      alert("Failed to export project. It might not contain any approved records.");
+    }
+  };
+
+  const handleDeleteProject = async (projectId: number) => {
+    if (confirm("Are you sure you want to delete this project and all its documents?")) {
+      try {
+        await deleteProject(projectId);
+        await loadProjects();
+      } catch (e) {
+        alert("Failed to delete project");
+      }
     }
   };
 
@@ -171,9 +182,18 @@ export default function ProjectsPage() {
                   <div className="bg-primary/10 p-2.5 rounded-xl text-primary ring-1 ring-primary/20">
                     <Folder className="h-5 w-5" />
                   </div>
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${project.status === 'Active' ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/20' : 'bg-slate-100 text-slate-600 ring-1 ring-slate-400/20'}`}>
-                    {project.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${project.status === 'Active' ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/20' : 'bg-slate-100 text-slate-600 ring-1 ring-slate-400/20'}`}>
+                      {project.status}
+                    </span>
+                    <button 
+                      onClick={(e) => { e.preventDefault(); handleDeleteProject(project.id); }}
+                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                      title="Delete Project"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
                 <CardTitle className="mt-5 text-xl font-bold tracking-tight text-slate-800 line-clamp-1" title={project.name}>{project.name}</CardTitle>
                 <CardDescription className="text-slate-500 font-medium mt-1">{project.document_count} documents</CardDescription>

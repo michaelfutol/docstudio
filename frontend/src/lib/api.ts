@@ -143,3 +143,11 @@ export async function deleteTemplate(templateId: number | string) {
   if (!res.ok) throw new Error("Failed to delete template");
   return res.json();
 }
+
+export async function deleteProject(projectId: number | string) {
+  const res = await fetch(`${API_BASE_URL}/projects/${projectId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error("Failed to delete project");
+  return res.json();
+}
