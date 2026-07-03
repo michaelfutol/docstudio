@@ -63,7 +63,7 @@ export default function IndustryLandingPage() {
       
       <div className="text-center max-w-2xl mx-auto space-y-4">
         <div className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-primary/10 text-primary mb-2">
-          Welcome to Document Intelligence Studio
+          Welcome to FutolDoc AI
         </div>
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900">
           What are you extracting today?
