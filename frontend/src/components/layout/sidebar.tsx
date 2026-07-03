@@ -18,7 +18,7 @@ export function Sidebar() {
     <div className="flex h-full w-64 flex-col bg-[#0b0f19] text-slate-300 border-r border-slate-800/60 shadow-xl z-20 relative">
       <div className="flex h-16 items-center px-6 font-bold text-lg text-white border-b border-white/5 tracking-tight">
         <Sparkles className="h-5 w-5 mr-2 text-primary" />
-        DocIntell<span className="text-primary">.ai</span>
+        FutolDoc<span className="text-primary"> AI</span>
       </div>
       <div className="flex-1 overflow-auto py-6">
         <nav className="grid gap-1 px-3">

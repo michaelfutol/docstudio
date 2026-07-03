@@ -7,8 +7,8 @@ import { Header } from "@/components/layout/header";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Document Intelligence Studio",
-  description: "Convert scanned documents into structured data",
+  title: "FutolDoc AI",
+  description: "AI-powered document extraction and structuring",
 };
 
 export default function RootLayout({

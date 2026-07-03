@@ -95,7 +95,7 @@ function OCRStudioContent() {
   }, [ocrLines, document, currentPage]);
 
   if (loading && !document) {
-    return <div className="p-8 flex items-center justify-center h-full text-muted-foreground">Loading Document Studio...</div>;
+    return <div className="p-8 flex items-center justify-center h-full text-muted-foreground">Loading FutolDoc AI...</div>;
   }
   
   if (document && (document.status === "processing" || document.status === "uploaded")) {

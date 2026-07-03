@@ -1,4 +1,4 @@
-# Document Intelligence Studio SaaS
+# FutolDoc AI SaaS
 
 An intelligent, AI-powered document extraction and digitization platform. 
 
