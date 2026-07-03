@@ -123,8 +123,8 @@ def _format_records(records, format_type: str):
                 # Since records are queried, let's rely on the router passing db if needed, or query it here.
                 # Actually, `r` has a relationship `r.document` if defined in SQLAlchemy models.
                 doc = r.document
-                pdf_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_searchable.pdf")
-                if os.path.exists(pdf_path):
+                pdf_path = doc.file_path
+                if os.path.exists(pdf_path) and pdf_path.endswith('.pdf'):
                     merger.append(pdf_path)
                     has_pdfs = True
             

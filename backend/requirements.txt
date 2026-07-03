@@ -4,10 +4,9 @@ sqlalchemy
 python-dotenv
 pydantic
 google-genai
-pytesseract
-pdf2image
 Pillow
 pypdf
+pymupdf
 python-multipart
 psycopg2-binary
 pymysql
