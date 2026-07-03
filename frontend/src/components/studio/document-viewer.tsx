@@ -3,6 +3,9 @@
 import React, { useRef, useState, useEffect } from "react";
 import { ZoomIn, ZoomOut, MousePointerSquareDashed } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { API_BASE_URL } from "@/lib/api";
+
+const BACKEND_URL = API_BASE_URL.replace('/api/v1', '');
 
 interface BBox {
   left: number;
@@ -115,7 +118,7 @@ export function DocumentViewer({
         >
           {/* Base Image */}
           <img 
-            src={`http://localhost:8000/${imagePath.replace(/\\/g, '/')}`} 
+            src={`${BACKEND_URL}/${imagePath.replace(/\\/g, '/')}`} 
             alt="Source Document" 
             className="w-full h-full object-contain pointer-events-none"
           />
