@@ -34,21 +34,40 @@ export async function triggerExtraction(docId: string | number, templateId: numb
   return res.json();
 }
 
-export async function uploadDocument(file: File, projectId?: number | string) {
-  const formData = new FormData();
-  formData.append('file', file);
-  
-  let url = `${API_BASE_URL}/documents`;
-  if (projectId) {
-    url += `?project_id=${projectId}`;
-  }
-  
-  const res = await fetch(url, {
-    method: 'POST',
-    body: formData,
+export function uploadDocument(file: File, projectId?: number | string, onProgress?: (percent: number) => void): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    let url = `${API_BASE_URL}/documents`;
+    if (projectId) {
+      url += `?project_id=${projectId}`;
+    }
+    
+    const xhr = new XMLHttpRequest();
+    
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        const percent = Math.round((event.loaded / event.total) * 100);
+        onProgress(percent);
+      }
+    };
+    
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText));
+      } else {
+        reject(new Error("Upload failed with status: " + xhr.status));
+      }
+    };
+    
+    xhr.onerror = () => {
+      reject(new Error("Network error during upload"));
+    };
+    
+    xhr.open('POST', url, true);
+    xhr.send(formData);
   });
-  if (!res.ok) throw new Error("Upload failed");
-  return res.json();
 }
 
 export async function fetchPendingRecords() {

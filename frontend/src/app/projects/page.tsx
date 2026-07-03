@@ -21,6 +21,7 @@ export default function ProjectsPage() {
   
   // Upload state
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
 
   // Modals state
@@ -59,7 +60,10 @@ export default function ProjectsPage() {
 
     try {
       setUploading(true);
-      const data = await uploadDocument(file, activeProjectId);
+      setUploadProgress(0);
+      const data = await uploadDocument(file, activeProjectId, (percent) => {
+        setUploadProgress(percent);
+      });
       
       if (data.document_id) {
         router.push(`/studio/ocr?docId=${data.document_id}`);
@@ -177,12 +181,25 @@ export default function ProjectsPage() {
               <CardContent className="pt-4 border-t border-slate-100 flex justify-between gap-3 bg-slate-50/50">
                 <Button 
                   variant="outline" 
-                  className="flex-1 text-xs h-9 bg-white shadow-sm border-slate-200 hover:bg-slate-50 hover:text-primary transition-all" 
+                  className="flex-1 text-xs h-9 bg-white shadow-sm border-slate-200 hover:bg-slate-50 hover:text-primary transition-all relative overflow-hidden" 
                   onClick={() => handleUploadClick(project.id)}
                   disabled={uploading}
                 >
-                  {uploading && activeProjectId === project.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
-                  Upload
+                  {uploading && activeProjectId === project.id ? (
+                    <>
+                      <div 
+                        className="absolute left-0 top-0 bottom-0 bg-primary/10 transition-all duration-200" 
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin relative z-10" />
+                      <span className="relative z-10">{uploadProgress}%</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="mr-2 h-4 w-4" />
+                      Upload
+                    </>
+                  )}
                 </Button>
                 <Button 
                   variant="secondary" 

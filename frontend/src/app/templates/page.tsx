@@ -3,7 +3,7 @@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Settings2, Trash2, Loader2, X } from "lucide-react";
+import { Plus, Settings2, Trash2, Loader2, X, FileText } from "lucide-react";
 import { useState, useEffect } from "react";
 import { fetchTemplates, createTemplate, updateTemplate, deleteTemplate } from "@/lib/api";
 
@@ -37,6 +37,21 @@ export default function TemplatesPage() {
     setEditingTemplate(null);
     setName("");
     setSchemaJsonStr("{\n  \"type\": \"object\",\n  \"properties\": {\n    \"field_name\": { \"type\": \"string\" }\n  }\n}");
+    setShowModal(true);
+  };
+
+  const handleCreateTranscription = () => {
+    setEditingTemplate(null);
+    setName("Layout-Preserving Transcription");
+    setSchemaJsonStr(JSON.stringify({
+      type: "object",
+      properties: {
+        full_transcription: {
+          type: "string",
+          description: "The exact full text of the document preserving all layout, spacing, and paragraphs"
+        }
+      }
+    }, null, 2));
     setShowModal(true);
   };
 
@@ -95,10 +110,16 @@ export default function TemplatesPage() {
             Manage extraction targets and validation rules.
           </p>
         </div>
-        <Button onClick={handleCreateNew}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Template
-        </Button>
+        <div className="flex gap-3">
+          <Button variant="secondary" onClick={handleCreateTranscription}>
+            <FileText className="mr-2 h-4 w-4" />
+            Transcription Template
+          </Button>
+          <Button onClick={handleCreateNew}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create Template
+          </Button>
+        </div>
       </div>
 
       {loading ? (

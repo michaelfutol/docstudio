@@ -83,17 +83,35 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
     # Real AI Extraction via Google Gemini
     client = genai.Client(api_key=api_key)
     
-    prompt = f"""
-    You are a data extraction assistant.
-    Extract the structured data from the following document text according to the provided JSON schema.
-    Also, please provide a 'field_confidences' object at the root of your JSON response, mapping each extracted field key (including nested keys using dot notation) to a confidence score between 0.0 and 1.0.
+    # Check if this is a transcription template
+    schema = template.schema_json if template.schema_json else {"type": "object", "properties": {}}
+    is_transcription = "full_transcription" in schema.get("properties", {})
     
-    Raw Document Text:
-    {full_text}
-    """
+    if is_transcription:
+        prompt = f"""
+        You are a highly precise document transcription assistant.
+        Your sole task is to perfectly transcribe the following document text into the 'full_transcription' field.
+        
+        CRITICAL RULES:
+        1. PRESERVE ALL LAYOUT, spacing, paragraphs, and line breaks exactly as they appear.
+        2. Do NOT summarize. Do NOT skip anything.
+        3. If there are tables or columns, try to format them clearly using spaces or markdown.
+        4. Provide a 'field_confidences' object mapping 'full_transcription' to a score (0.0 to 1.0).
+        
+        Raw Document Text:
+        {full_text}
+        """
+    else:
+        prompt = f"""
+        You are a data extraction assistant.
+        Extract the structured data from the following document text according to the provided JSON schema.
+        Also, please provide a 'field_confidences' object at the root of your JSON response, mapping each extracted field key (including nested keys using dot notation) to a confidence score between 0.0 and 1.0.
+        
+        Raw Document Text:
+        {full_text}
+        """
     
     # Merge field_confidences into the expected response schema so Gemini understands it's strictly required
-    schema = template.schema_json if template.schema_json else {"type": "object", "properties": {}}
     if "properties" in schema:
         schema["properties"]["field_confidences"] = {
             "type": "object",
@@ -103,7 +121,7 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-pro',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",

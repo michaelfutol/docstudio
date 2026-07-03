@@ -98,6 +98,17 @@ def export_text(document_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
         
+    # Check if there's an AI extraction with a full_transcription
+    record = db.query(models.ExtractedRecord).filter(models.ExtractedRecord.document_id == document_id).first()
+    if record and record.record_data and "full_transcription" in record.record_data:
+        text_content = record.record_data["full_transcription"]
+        return Response(
+            content=text_content,
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename={doc.filename}_transcription.txt"}
+        )
+        
+    # Fallback to raw OCR text
     txt_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_raw.txt")
     if not os.path.exists(txt_path):
         raise HTTPException(status_code=404, detail="Raw text not found. Ensure OCR has completed.")
