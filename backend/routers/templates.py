@@ -23,7 +23,7 @@ def get_templates(db: Session = Depends(get_db)):
 
 @router.post("/")
 def create_template(req: schemas.TemplateCreate, db: Session = Depends(get_db)):
-    template = models.Template(name=req.name, schema_json=req.schema_json, validation_rules=req.validation_rules)
+    template = models.Template(name=req.name, schema_json=req.schema_json, industry=req.industry, validation_rules=req.validation_rules)
     db.add(template)
     db.commit()
     db.refresh(template)
@@ -38,6 +38,8 @@ def update_template(template_id: int, req: schemas.TemplateUpdate, db: Session =
         template.name = req.name
     if req.schema_json is not None:
         template.schema_json = req.schema_json
+    if req.industry is not None:
+        template.industry = req.industry
     if req.validation_rules is not None:
         template.validation_rules = req.validation_rules
     db.commit()

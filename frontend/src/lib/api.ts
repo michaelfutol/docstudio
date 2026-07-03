@@ -116,18 +116,18 @@ export async function exportProject(projectId: number | string, format: string) 
   return res.blob();
 }
 
-export async function createTemplate(name: string, schema_json: any, validation_rules?: any) {
+export async function createTemplate(name: string, schema_json: any, industry?: string, validation_rules?: any) {
   const res = await fetch(`${API_BASE_URL}/templates`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, schema_json, validation_rules })
+    body: JSON.stringify({ name, schema_json, industry: industry || "General", validation_rules })
   });
-  if (!res.ok) throw new Error("Failed to create template");
+  if (!res.ok) throw new Error('Failed to create template');
   return res.json();
 }
 
-export async function updateTemplate(templateId: number | string, data: any) {
-  const res = await fetch(`${API_BASE_URL}/templates/${templateId}`, {
+export async function updateTemplate(id: number, data: any) {
+  const res = await fetch(`${API_BASE_URL}/templates/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)

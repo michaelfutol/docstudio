@@ -25,11 +25,13 @@ class ProjectUpdate(BaseModel):
 class TemplateCreate(BaseModel):
     name: str
     schema_json: Dict[str, Any]
+    industry: Optional[str] = "General"
     validation_rules: Optional[Dict[str, Any]] = None
 
 class TemplateUpdate(BaseModel):
     name: Optional[str] = None
     schema_json: Optional[Dict[str, Any]] = None
+    industry: Optional[str] = None
     validation_rules: Optional[Dict[str, Any]] = None
 
 class PageTextUpdate(BaseModel):
