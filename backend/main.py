@@ -67,6 +67,19 @@ def startup_tasks():
     except Exception:
         db.rollback() # Column likely exists
 
+    # 1.5 Fix existing seed data industries and schema
+    try:
+        db.execute(text("UPDATE templates SET industry = 'Engineering' WHERE name = 'Questionnaire / Multiple Choice' OR name = 'Engineering: Material Schedule'"))
+        db.execute(text("UPDATE templates SET industry = 'Accounting' WHERE name = 'Invoice' OR name = 'Accounting: Invoice Line Items'"))
+        db.execute(text("UPDATE templates SET industry = 'General' WHERE name = 'Receipt' OR name = 'General Document' OR name = 'Standard Text Extraction'"))
+        
+        schema = """{"type": "array", "items": {"type": "object", "properties": {"Description": {"type": "string"}, "Quantity": {"type": "number"}, "Unit Price": {"type": "number"}, "Total Price": {"type": "number"}}}}"""
+        db.execute(text("UPDATE templates SET schema_json = :schema WHERE name = 'Accounting: Invoice Line Items'"), {"schema": schema})
+        db.commit()
+    except Exception as e:
+        print(f"Error fixing seed data: {e}")
+        db.rollback()
+
     # 2. Seed Default Templates
     try:
         if db.query(models.Template).filter(models.Template.name == "Engineering: Material Schedule").first() is None:
