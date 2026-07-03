@@ -121,8 +121,14 @@ def export_text(document_id: int, db: Session = Depends(get_db)):
         
     # Fallback to raw OCR text
     txt_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_raw.txt")
-    if not os.path.exists(txt_path):
-        raise HTTPException(status_code=404, detail="Raw text not found. Ensure OCR has completed.")
+    if not os.path.exists(txt_path) or os.path.getsize(txt_path) == 0:
+        # If it's an image or empty, return a helpful message
+        helpful_message = "Raw text extraction requires a PDF document. Since this is an image, please use the 'Layout-Preserving Transcription' template to extract text using AI."
+        return Response(
+            content=helpful_message,
+            media_type="text/plain",
+            headers={"Content-Disposition": f'attachment; filename="{doc.filename}_raw_text_info.txt"'}
+        )
         
     return FileResponse(txt_path, media_type="text/plain", filename=f"{doc.filename}_raw.txt")
 

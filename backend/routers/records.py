@@ -48,5 +48,10 @@ def update_record_status(record_id: int, req: schemas.RecordStatusUpdate, db: Se
     if req.record_data:
         record.record_data = req.record_data
         
+    # Update parent document status to match
+    doc = db.query(models.Document).filter(models.Document.id == record.document_id).first()
+    if doc:
+        doc.status = req.status
+        
     db.commit()
-    return {"message": f"Record {req.status}"}
+    return {"message": f"Record and Document {req.status}"}

@@ -89,21 +89,6 @@ function BuilderContent() {
           <PipelineStepper currentStage={extractedData ? "pending_review" : (extracting ? "extracting" : "processed")} />
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button 
-            variant="outline"
-            className="border-primary/20 text-primary"
-            onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export/searchable-pdf`, '_blank')}
-          >
-            <Download className="mr-2 h-4 w-4" /> Searchable PDF
-          </Button>
-          <Button 
-            variant="outline"
-            className="border-primary/20 text-primary"
-            onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export/text`, '_blank')}
-          >
-            <FileText className="mr-2 h-4 w-4" /> Raw Text
-          </Button>
-          
           {extractedData && (
             <Link href="/review">
               <Button>Send to Review Queue <ArrowRight className="h-4 w-4 ml-2" /></Button>
@@ -256,6 +241,34 @@ function BuilderContent() {
                 </div>
               )}
             </div>
+            
+            {extractedData && !extracting && (
+              <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center gap-3 mt-auto shrink-0">
+                <p className="text-sm text-slate-500 font-medium">Export Extracted Data</p>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline"
+                    className="bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                    onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export/text`, '_blank')}
+                  >
+                    <FileText className="mr-2 h-4 w-4" /> Raw Text
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    className="bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                    onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export/searchable-pdf`, '_blank')}
+                  >
+                    <Download className="mr-2 h-4 w-4" /> Searchable PDF
+                  </Button>
+                  <Button 
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                    onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export?format=csv`, '_blank')}
+                  >
+                    <Download className="mr-2 h-4 w-4" /> CSV (Excel)
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

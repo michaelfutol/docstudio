@@ -29,6 +29,7 @@ export default function TemplatesPage() {
 
   const [builderMode, setBuilderMode] = useState<"visual" | "json">("visual");
   const [fields, setFields] = useState<{id: string, name: string, type: string, description: string}[]>([]);
+  const [isTable, setIsTable] = useState(false);
   const [templateIndustry, setTemplateIndustry] = useState("General");
 
 
@@ -47,11 +48,11 @@ export default function TemplatesPage() {
     }
   }
 
-    const handleCreateNew = () => {
     setEditingTemplate(null);
     setName("");
     setBuilderMode("visual");
     setFields([{ id: Math.random().toString(), name: "field_name", type: "string", description: "" }]);
+    setIsTable(false);
     setSchemaJsonStr(`{
   "type": "object",
   "properties": {
@@ -85,8 +86,11 @@ export default function TemplatesPage() {
     
     // Try to parse into fields
     try {
-      const props = tpl.schema_json.properties;
-      if (props && !tpl.schema_json.properties.data) {
+      const isArray = tpl.schema_json.type === "array";
+      const props = isArray ? tpl.schema_json.items?.properties : tpl.schema_json.properties;
+      setIsTable(isArray);
+      
+      if (props && !props.data && !tpl.schema_json.properties?.data) {
         const parsedFields = Object.keys(props).map(k => ({
           id: Math.random().toString(),
           name: k,
@@ -128,7 +132,9 @@ export default function TemplatesPage() {
           if (f.description) properties[f.name.trim()].description = f.description;
         }
       });
-      parsedSchema = { type: "object", properties };
+      parsedSchema = isTable 
+        ? { type: "array", items: { type: "object", properties } }
+        : { type: "object", properties };
     } else {
       try {
         parsedSchema = JSON.parse(schemaJsonStr);
@@ -295,6 +301,10 @@ export default function TemplatesPage() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-end mb-2">
                     <p className="text-sm text-slate-500">Define the fields you want the AI to extract.</p>
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm hover:bg-slate-50">
+                      <input type="checkbox" checked={isTable} onChange={e => setIsTable(e.target.checked)} className="rounded text-primary focus:ring-primary h-4 w-4 cursor-pointer" />
+                      Extract as Table (Multiple Rows)
+                    </label>
                   </div>
                   <div className="space-y-2 border border-slate-200 rounded-xl bg-slate-50 p-2">
                     {fields.map((field, idx) => (
