@@ -25,7 +25,7 @@ def get_projects(db: Session = Depends(get_db)):
 
 @router.post("/")
 def create_project(req: schemas.ProjectCreate, db: Session = Depends(get_db)):
-    project = models.Project(name=req.name, description=req.description)
+    project = models.Project(name=req.name, description=req.description, industry=req.industry)
     db.add(project)
     db.commit()
     db.refresh(project)
@@ -40,6 +40,8 @@ def update_project(project_id: int, req: schemas.ProjectUpdate, db: Session = De
         project.name = req.name
     if req.description is not None:
         project.description = req.description
+    if req.industry is not None:
+        project.industry = req.industry
     db.commit()
     db.refresh(project)
     return project

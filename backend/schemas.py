@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+from datetime import datetime
 
 class ExtractRequest(BaseModel):
     template_id: int
@@ -7,10 +8,19 @@ class ExtractRequest(BaseModel):
 class ProjectCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    industry: Optional[str] = "General"
+
+class Project(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    industry: str
+    created_at: datetime
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    industry: Optional[str] = None
 
 class TemplateCreate(BaseModel):
     name: str

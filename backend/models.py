@@ -9,6 +9,7 @@ class Project(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), index=True)
     description = Column(String, nullable=True)
+    industry = Column(String(50), default="General")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     documents = relationship("Document", back_populates="project")
@@ -48,6 +49,7 @@ class Template(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), index=True)
+    industry = Column(String(50), default="General")
     schema_json = Column(JSON)
     validation_rules = Column(JSON, nullable=True)
 

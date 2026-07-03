@@ -11,6 +11,8 @@ export default function TemplatesPage() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  const [activeTab, setActiveTab] = useState("All");
+  
   const [showModal, setShowModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   
@@ -101,6 +103,12 @@ export default function TemplatesPage() {
     }
   };
 
+  const filteredTemplates = templates.filter(t => {
+    return activeTab === "All" || t.industry === activeTab;
+  });
+
+  const tabs = ["All", "Engineering", "Accounting", "Legal", "General"];
+
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
@@ -122,6 +130,22 @@ export default function TemplatesPage() {
         </div>
       </div>
 
+      <div className="flex gap-2 pb-2 overflow-x-auto">
+        {tabs.map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+              activeTab === tab 
+                ? 'bg-primary text-primary-foreground shadow-sm' 
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map(i => (
@@ -130,7 +154,7 @@ export default function TemplatesPage() {
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {templates.map((tpl) => (
+          {filteredTemplates.map((tpl) => (
             <div key={tpl.id} className="card-premium flex flex-col group relative overflow-hidden bg-white">
               <CardHeader className="pb-4 flex-1">
                 <div className="flex justify-between items-start">

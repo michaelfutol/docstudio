@@ -100,11 +100,11 @@ export async function fetchRecord(recordId: string | number) {
   return res.json();
 }
 
-export async function createProject(name: string, description?: string) {
+export async function createProject(name: string, description?: string, industry?: string) {
   const res = await fetch(`${API_BASE_URL}/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, description })
+    body: JSON.stringify({ name, description, industry })
   });
   if (!res.ok) throw new Error("Failed to create project");
   return res.json();

@@ -16,8 +16,9 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Search state
+  // Search and Filter state
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("All");
   
   // Upload state
   const [uploading, setUploading] = useState(false);
@@ -28,6 +29,7 @@ export default function ProjectsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
+  const [newProjectIndustry, setNewProjectIndustry] = useState("General");
   const [creatingProject, setCreatingProject] = useState(false);
 
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -82,11 +84,12 @@ export default function ProjectsPage() {
     if (!newProjectName.trim()) return;
     setCreatingProject(true);
     try {
-      await createProject(newProjectName, newProjectDesc);
+      await createProject(newProjectName, newProjectDesc, newProjectIndustry);
       await loadProjects();
       setShowCreateModal(false);
       setNewProjectName("");
       setNewProjectDesc("");
+      setNewProjectIndustry("General");
     } catch (e) {
       console.error(e);
       alert("Failed to create project");
@@ -128,7 +131,13 @@ export default function ProjectsPage() {
     }
   };
 
-  const filteredProjects = projects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredProjects = projects.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTab = activeTab === "All" || p.industry === activeTab;
+    return matchesSearch && matchesTab;
+  });
+
+  const tabs = ["All", "Engineering", "Accounting", "Legal", "General"];
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500 relative">
@@ -152,6 +161,22 @@ export default function ProjectsPage() {
             New Project
           </Button>
         </div>
+      </div>
+
+      <div className="flex gap-2 pb-2 overflow-x-auto">
+        {tabs.map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+              activeTab === tab 
+                ? 'bg-primary text-primary-foreground shadow-sm' 
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
       </div>
 
       <div className="flex gap-4 items-center bg-white p-2 rounded-2xl shadow-sm border border-slate-200/60">
@@ -266,6 +291,19 @@ export default function ProjectsPage() {
                   value={newProjectDesc} 
                   onChange={e => setNewProjectDesc(e.target.value)} 
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Industry Category</label>
+                <select 
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm"
+                  value={newProjectIndustry}
+                  onChange={e => setNewProjectIndustry(e.target.value)}
+                >
+                  <option value="General">General</option>
+                  <option value="Engineering">Engineering</option>
+                  <option value="Accounting">Accounting</option>
+                  <option value="Legal">Legal</option>
+                </select>
               </div>
             </div>
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">

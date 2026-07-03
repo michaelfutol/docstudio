@@ -46,15 +46,34 @@ def read_root():
     return {"message": "Welcome to Document Intelligence Studio API"}
 
 @app.on_event("startup")
-def seed_default_templates():
+def startup_tasks():
     from database import SessionLocal
+    from sqlalchemy import text
     import models
     db = SessionLocal()
+    
+    # 1. Run Migrations for SQLite
+    try:
+        # Check and add 'industry' to projects
+        db.execute(text("ALTER TABLE projects ADD COLUMN industry VARCHAR(50) DEFAULT 'General'"))
+        db.commit()
+    except Exception:
+        db.rollback() # Column likely exists
+        
+    try:
+        # Check and add 'industry' to templates
+        db.execute(text("ALTER TABLE templates ADD COLUMN industry VARCHAR(50) DEFAULT 'General'"))
+        db.commit()
+    except Exception:
+        db.rollback() # Column likely exists
+
+    # 2. Seed Default Templates
     try:
         if db.query(models.Template).filter(models.Template.name == "Engineering: Material Schedule").first() is None:
             templates = [
                 models.Template(
                     name="Engineering: Material Schedule",
+                    industry="Engineering",
                     schema_json={
                         "type": "object",
                         "properties": {
@@ -79,6 +98,7 @@ def seed_default_templates():
                 ),
                 models.Template(
                     name="Accounting: Invoice Line Items",
+                    industry="Accounting",
                     schema_json={
                         "type": "object",
                         "properties": {
@@ -101,6 +121,7 @@ def seed_default_templates():
                 ),
                 models.Template(
                     name="Standard Text Extraction",
+                    industry="General",
                     schema_json={
                         "type": "object",
                         "properties": {
