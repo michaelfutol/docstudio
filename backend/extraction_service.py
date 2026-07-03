@@ -19,14 +19,16 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
     doc.status = "extracting"
     db.commit()
 
-    # Fetch all pages text
-    pages = db.query(models.DocumentPage).filter(models.DocumentPage.document_id == document_id).all()
+    # Fetch all pages
+    pages = db.query(models.DocumentPage).filter(models.DocumentPage.document_id == document_id).order_by(models.DocumentPage.page_number).all()
     full_text = "\n\n".join([f"--- Page {p.page_number} ---\n{p.text_content}" for p in pages if p.text_content])
 
     api_key = os.getenv("GEMINI_API_KEY")
     
-    # If API key is not set or mock text is used without real OCR, fallback to mock data
-    if not api_key or "YOUR_GEMINI_API_KEY_HERE" in api_key or not full_text:
+    has_images = any(p.image_path and os.path.exists(p.image_path) for p in pages)
+    
+    # If API key is not set or there's absolutely no text and no images, fallback to mock data
+    if not api_key or "YOUR_GEMINI_API_KEY_HERE" in api_key or (not full_text and not has_images):
         # Mocking extraction based on the template schema dynamically
         def generate_mock_value(schema_node, field_name=""):
             node_type = schema_node.get("type", "string")
@@ -132,9 +134,21 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
         }
 
     try:
+        contents = [prompt]
+        
+        # Attach images for Gemini Vision
+        from PIL import Image
+        for p in pages:
+            if p.image_path and os.path.exists(p.image_path):
+                try:
+                    img = Image.open(p.image_path)
+                    contents.append(img)
+                except Exception as e:
+                    print(f"Failed to load image for Gemini: {e}")
+
         response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=prompt,
+            contents=contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=schema
