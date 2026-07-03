@@ -96,5 +96,48 @@ def _format_records(records, format_type: str):
             writer.writerow(row)
         
         return {"data": output.getvalue(), "type": "text/csv", "filename": "export.csv"}
+        
+    elif format_type == 'txt':
+        output = io.StringIO()
+        for i, r in enumerate(records):
+            if i > 0:
+                output.write("\n\n" + "="*50 + "\n\n")
+            output.write(f"--- Document ID {r.document_id} ---\n\n")
+            if isinstance(r.record_data, dict) and "full_transcription" in r.record_data:
+                output.write(r.record_data["full_transcription"])
+            else:
+                output.write(json.dumps(r.record_data, indent=2))
+                
+        return {"data": output.getvalue(), "type": "text/plain", "filename": "export.txt"}
+        
+    elif format_type == 'pdf':
+        try:
+            from PyPDF2 import PdfMerger
+            import os
+            
+            merger = PdfMerger()
+            has_pdfs = False
+            
+            for r in records:
+                # Need to find the actual Document path. We can import Session and get it, or assume record.document
+                # Since records are queried, let's rely on the router passing db if needed, or query it here.
+                # Actually, `r` has a relationship `r.document` if defined in SQLAlchemy models.
+                doc = r.document
+                pdf_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_searchable.pdf")
+                if os.path.exists(pdf_path):
+                    merger.append(pdf_path)
+                    has_pdfs = True
+            
+            if not has_pdfs:
+                return None
+                
+            output = io.BytesIO()
+            merger.write(output)
+            merger.close()
+            
+            return {"data": output.getvalue(), "type": "application/pdf", "filename": "export.pdf"}
+        except Exception as e:
+            print(f"Error generating PDF export: {e}")
+            return None
 
     return None
