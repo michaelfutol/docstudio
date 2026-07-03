@@ -18,7 +18,7 @@ def export_project(project_id: int, format: str = "json", db: Session = Depends(
         return Response(
             content=result["data"],
             media_type=result["type"],
-            headers={"Content-Disposition": f"attachment; filename={result.get('filename', 'export')}"}
+            headers={"Content-Disposition": f'attachment; filename="{result.get("filename", "export")}"'}
         )
 
 @router.get("/export/all")
@@ -33,7 +33,7 @@ def export_all(format: str = "json", db: Session = Depends(get_db)):
         return Response(
             content=result["data"],
             media_type=result["type"],
-            headers={"Content-Disposition": f"attachment; filename={result.get('filename', 'export')}"}
+            headers={"Content-Disposition": f'attachment; filename="{result.get("filename", "export")}"'}
         )
 
 @router.get("/documents/{document_id}/export")
@@ -48,5 +48,5 @@ def export_document(document_id: int, format: str = "json", db: Session = Depend
         return Response(
             content=result["data"],
             media_type=result["type"],
-            headers={"Content-Disposition": f"attachment; filename={result.get('filename', 'export')}"}
+            headers={"Content-Disposition": f'attachment; filename="{result.get("filename", "export")}"'}
         )
