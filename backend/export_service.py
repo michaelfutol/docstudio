@@ -78,12 +78,28 @@ def _format_records(records, format_type: str):
         flattened = []
         all_keys = set()
         for r in records:
-            flat = flatten_dict(r.record_data)
-            flat['_record_id'] = r.id
-            flat['_document_id'] = r.document_id
-            flat['_confidence'] = r.confidence
-            all_keys.update(flat.keys())
-            flattened.append(flat)
+            data = r.record_data
+            if isinstance(data, list):
+                # Unroll table rows into CSV rows
+                for idx, item in enumerate(data):
+                    flat = flatten_dict(item) if isinstance(item, dict) else {"value": item}
+                    flat['_record_id'] = f"{r.id}_{idx+1}"
+                    flat['_document_id'] = r.document_id
+                    flat['_confidence'] = r.confidence
+                    all_keys.update(flat.keys())
+                    flattened.append(flat)
+            else:
+                flat = flatten_dict(data) if isinstance(data, dict) else {"value": data}
+                # Remove field_confidences clutter
+                keys_to_remove = [k for k in flat.keys() if 'field_confidences' in k]
+                for k in keys_to_remove:
+                    del flat[k]
+                
+                flat['_record_id'] = r.id
+                flat['_document_id'] = r.document_id
+                flat['_confidence'] = r.confidence
+                all_keys.update(flat.keys())
+                flattened.append(flat)
         
         # Sort keys for stable column order, put meta keys first
         meta_keys = sorted([k for k in all_keys if k.startswith('_')])
