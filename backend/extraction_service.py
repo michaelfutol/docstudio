@@ -136,13 +136,17 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
     try:
         contents = [prompt]
         
-        # Attach images for Gemini Vision
+        # Attach images for Gemini Vision (Cap at 10 to prevent payload too large errors)
         from PIL import Image
+        image_count = 0
         for p in pages:
+            if image_count >= 10:
+                break
             if p.image_path and os.path.exists(p.image_path):
                 try:
                     img = Image.open(p.image_path)
                     contents.append(img)
+                    image_count += 1
                 except Exception as e:
                     print(f"Failed to load image for Gemini: {e}")
 
