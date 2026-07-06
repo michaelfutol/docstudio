@@ -3,14 +3,22 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Database, AlertCircle, CheckCircle, Activity, Zap, Trash2 } from "lucide-react";
+import { FileText, Plus, Database, AlertCircle, CheckCircle, Activity, Zap, Trash2, X, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { fetchProjects, fetchStats, deleteDocument } from "@/lib/api";
+import { fetchProjects, fetchStats, deleteDocument, createProject } from "@/lib/api";
+import { Input } from "@/components/ui/input";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Modals state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDesc, setNewProjectDesc] = useState("");
+  const [newProjectIndustry, setNewProjectIndustry] = useState("General");
+  const [creatingProject, setCreatingProject] = useState(false);
 
   const loadStats = async () => {
     try {
@@ -30,6 +38,24 @@ export default function DashboardPage() {
   useEffect(() => {
     loadStats();
   }, []);
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) return;
+    setCreatingProject(true);
+    try {
+      await createProject(newProjectName, newProjectDesc, newProjectIndustry);
+      await loadStats();
+      setShowCreateModal(false);
+      setNewProjectName("");
+      setNewProjectDesc("");
+      setNewProjectIndustry("General");
+    } catch (e) {
+      console.error(e);
+      alert("Failed to create project");
+    } finally {
+      setCreatingProject(false);
+    }
+  };
 
   const handleDeleteDocument = async (id: number) => {
     if (confirm("Are you sure you want to delete this document?")) {
@@ -53,12 +79,10 @@ export default function DashboardPage() {
             Overview of your document processing tasks.
           </p>
         </div>
-        <Link href="/projects">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New Project
-          </Button>
-        </Link>
+        <Button onClick={() => setShowCreateModal(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          New Project
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -215,6 +239,58 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Create Project Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <h2 className="text-lg font-semibold text-slate-800">Create New Project</h2>
+              <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Project Name</label>
+                <Input 
+                  placeholder="e.g. Supplier Invoices Q3" 
+                  value={newProjectName} 
+                  onChange={e => setNewProjectName(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description (Optional)</label>
+                <Input 
+                  placeholder="Brief description of documents" 
+                  value={newProjectDesc} 
+                  onChange={e => setNewProjectDesc(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Industry Category</label>
+                <select 
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm"
+                  value={newProjectIndustry}
+                  onChange={e => setNewProjectIndustry(e.target.value)}
+                >
+                  <option value="General">General</option>
+                  <option value="Engineering">Engineering</option>
+                  <option value="Accounting">Accounting</option>
+                  <option value="Legal">Legal</option>
+                </select>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowCreateModal(false)} disabled={creatingProject}>Cancel</Button>
+              <Button onClick={handleCreateProject} disabled={creatingProject || !newProjectName.trim()}>
+                {creatingProject && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Create Project
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
