@@ -119,9 +119,17 @@ def export_searchable_pdf(document_id: int, db: Session = Depends(get_db)):
                     if db_page and db_page.text_content:
                         # Check if page already has text. If not, inject the database text_content
                         if not page.get_text().strip():
-                            # Inject text invisibly
+                            # Inject text invisibly with book margins (12% horizontal, 8% vertical)
+                            margin_x = page.rect.width * 0.12
+                            margin_y = page.rect.height * 0.08
+                            text_rect = fitz.Rect(
+                                margin_x,
+                                margin_y,
+                                page.rect.width - margin_x,
+                                page.rect.height - margin_y
+                            )
                             page.insert_textbox(
-                                page.rect,
+                                text_rect,
                                 db_page.text_content,
                                 render_mode=3,
                                 fontsize=9
@@ -155,8 +163,16 @@ def export_searchable_pdf(document_id: int, db: Session = Depends(get_db)):
                 for p_idx, page in enumerate(pdf_doc):
                     db_page = next((p for p in pages if p.page_number == p_idx + 1), None)
                     if db_page and db_page.text_content:
+                        margin_x = page.rect.width * 0.12
+                        margin_y = page.rect.height * 0.08
+                        text_rect = fitz.Rect(
+                            margin_x,
+                            margin_y,
+                            page.rect.width - margin_x,
+                            page.rect.height - margin_y
+                        )
                         page.insert_textbox(
-                            page.rect,
+                            text_rect,
                             db_page.text_content,
                             render_mode=3,
                             fontsize=9
