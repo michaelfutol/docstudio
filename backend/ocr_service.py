@@ -42,21 +42,53 @@ def process_document_ocr(db: Session, document_id: int):
                 # Extract text blocks
                 text_dict = page.get_text("dict")
                 page_text = page.get_text()
+                
+                # If page has no native text layer, it's a scanned PDF. Transcribe it via Gemini!
+                is_scanned = not page_text.strip()
+                if is_scanned:
+                    try:
+                        api_key = os.getenv("GEMINI_API_KEY")
+                        if api_key:
+                            from google import genai
+                            from google.genai import types
+                            from PIL import Image
+                            client = genai.Client(api_key=api_key)
+                            img = Image.open(image_path)
+                            response = client.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=[
+                                    "Transcribe the text in this page image exactly. Do not add markdown or comments. Preserve line breaks.",
+                                    img
+                                ]
+                            )
+                            if response.text:
+                                page_text = response.text
+                    except Exception as gemini_err:
+                        print(f"Gemini page transcription failed for page {page_num+1}: {gemini_err}")
+                
                 full_text.append(page_text)
                 
                 lines = []
-                for block in text_dict.get("blocks", []):
-                    for line in block.get("lines", []):
-                        for span in line.get("spans", []):
-                            text = span.get("text", "").strip()
-                            if text:
-                                bbox = span.get("bbox")
-                                lines.append({
-                                    "text": text,
-                                    "confidence": 1.0, # Native PDF is 100% accurate
-                                    "bbox": bbox,
-                                    "needsReview": False
-                                })
+                if is_scanned and page_text.strip():
+                    lines.append({
+                        "text": page_text.strip(),
+                        "confidence": 0.95,
+                        "bbox": [0, 0, page.rect.width, page.rect.height],
+                        "needsReview": False
+                    })
+                else:
+                    for block in text_dict.get("blocks", []):
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                text = span.get("text", "").strip()
+                                if text:
+                                    bbox = span.get("bbox")
+                                    lines.append({
+                                        "text": text,
+                                        "confidence": 1.0, # Native PDF is 100% accurate
+                                        "bbox": bbox,
+                                        "needsReview": False
+                                    })
                 
                 ocr_json = {
                     "pages": [{

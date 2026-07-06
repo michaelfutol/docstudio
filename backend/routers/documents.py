@@ -103,20 +103,73 @@ def export_searchable_pdf(document_id: int, db: Session = Depends(get_db)):
     if file_ext == ".pdf":
         if not os.path.exists(doc.file_path):
             raise HTTPException(status_code=404, detail="Original PDF file is no longer on the server. Please re-upload the document.")
-        return FileResponse(doc.file_path, media_type="application/pdf", filename=f"{doc.filename}")
+            
+        # We will generate a truly searchable PDF by injecting the transcribed text layer
+        searchable_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_searchable.pdf")
+        
+        # Check if we need to build it (cache it for speed)
+        if not os.path.exists(searchable_path):
+            import fitz
+            try:
+                pdf_doc = fitz.open(doc.file_path)
+                pages = db.query(models.DocumentPage).filter(models.DocumentPage.document_id == document_id).order_by(models.DocumentPage.page_number).all()
+                
+                for p_idx, page in enumerate(pdf_doc):
+                    db_page = next((p for p in pages if p.page_number == p_idx + 1), None)
+                    if db_page and db_page.text_content:
+                        # Check if page already has text. If not, inject the database text_content
+                        if not page.get_text().strip():
+                            # Inject text invisibly
+                            page.insert_textbox(
+                                page.rect,
+                                db_page.text_content,
+                                render_mode=3,
+                                fontsize=9
+                            )
+                
+                pdf_doc.save(searchable_path)
+                pdf_doc.close()
+            except Exception as pdf_err:
+                print(f"Error injecting text layer: {pdf_err}")
+                return FileResponse(doc.file_path, media_type="application/pdf", filename=f"{doc.filename}")
+                
+        return FileResponse(searchable_path, media_type="application/pdf", filename=f"{doc.filename}")
     else:
         # It's an image, convert to basic PDF for export
         pdf_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_converted.pdf")
-        if not os.path.exists(pdf_path):
+        searchable_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_converted_searchable.pdf")
+        
+        if not os.path.exists(searchable_path):
             from PIL import Image
+            import fitz
             try:
-                img = Image.open(doc.file_path)
-                img.convert('RGB').save(pdf_path)
+                # 1. Convert image to PDF first if not exists
+                if not os.path.exists(pdf_path):
+                    img = Image.open(doc.file_path)
+                    img.convert('RGB').save(pdf_path)
+                
+                # 2. Inject text layer
+                pdf_doc = fitz.open(pdf_path)
+                pages = db.query(models.DocumentPage).filter(models.DocumentPage.document_id == document_id).order_by(models.DocumentPage.page_number).all()
+                
+                for p_idx, page in enumerate(pdf_doc):
+                    db_page = next((p for p in pages if p.page_number == p_idx + 1), None)
+                    if db_page and db_page.text_content:
+                        page.insert_textbox(
+                            page.rect,
+                            db_page.text_content,
+                            render_mode=3,
+                            fontsize=9
+                        )
+                pdf_doc.save(searchable_path)
+                pdf_doc.close()
             except Exception as e:
-                print(f"Error converting image to PDF: {e}")
+                print(f"Error generating searchable PDF for image: {e}")
+                if os.path.exists(pdf_path):
+                    return FileResponse(pdf_path, media_type="application/pdf", filename=f"{doc.filename}.pdf")
                 raise HTTPException(status_code=500, detail="Failed to generate PDF")
                 
-        return FileResponse(pdf_path, media_type="application/pdf", filename=f"{doc.filename}.pdf")
+        return FileResponse(searchable_path, media_type="application/pdf", filename=f"{doc.filename}.pdf")
 
 @router.get("/{document_id}/export/text")
 def export_text(document_id: int, db: Session = Depends(get_db)):
