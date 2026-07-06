@@ -100,7 +100,7 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
         }
 
     # Chunking logic
-    CHUNK_SIZE = 10
+    CHUNK_SIZE = 3
     chunks = [pages[i:i + CHUNK_SIZE] for i in range(0, len(pages), CHUNK_SIZE)]
     
     merged_data = {}
@@ -123,14 +123,14 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
             chunk_text = "\n\n".join([f"--- Page {p.page_number} ---\n{p.text_content}" for p in chunk if p.text_content])
             
             if is_transcription:
-                prompt = f"""You are a highly precise document transcription assistant. Your sole task is to perfectly transcribe the following document text into the 'full_transcription' field.
+                prompt = f"""You are a highly precise document transcription assistant. Your sole task is to perfectly transcribe the {len(chunk)} pages of the document provided below into the 'full_transcription' field.
 CRITICAL RULES:
 1. PRESERVE ALL LAYOUT, spacing, paragraphs, and line breaks exactly as they appear.
-2. Do NOT summarize. Do NOT skip anything.
+2. Do NOT summarize. Do NOT skip any pages. You MUST transcribe ALL {len(chunk)} pages sequentially.
 3. If there are tables or columns, try to format them clearly using spaces or markdown.
 4. Provide an 'overall_confidence' score (0.0 to 1.0).
 
-Raw Document Text:
+Raw Document Text (for reference):
 {chunk_text}
 """
             else:
@@ -236,7 +236,7 @@ Raw Document Text:
                 all_confidences.append(extracted_json["overall_confidence"])
                     
             if idx < total_chunks - 1:
-                time.sleep(5) # Respect Gemini free tier limits (15 requests per minute -> 4s minimum, using 5s to be safe)
+                time.sleep(1) # We use 1s for OpenRouter since it handles concurrency/rate limits better
                 
         # Finalize
         confidence = sum(all_confidences) / len(all_confidences) if all_confidences else 0.90
