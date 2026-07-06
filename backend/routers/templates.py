@@ -21,6 +21,7 @@ def get_templates(db: Session = Depends(get_db)):
         templates = db.query(models.Template).all()
     return templates
 
+@router.post("")
 @router.post("/")
 def create_template(req: schemas.TemplateCreate, db: Session = Depends(get_db)):
     template = models.Template(name=req.name, schema_json=req.schema_json, industry=req.industry, validation_rules=req.validation_rules)

@@ -23,6 +23,7 @@ def get_projects(db: Session = Depends(get_db)):
         })
     return result
 
+@router.post("")
 @router.post("/")
 def create_project(req: schemas.ProjectCreate, db: Session = Depends(get_db)):
     project = models.Project(name=req.name, description=req.description, industry=req.industry)

@@ -13,6 +13,7 @@ from extraction_service import extract_structured_data
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
+@router.post("")
 @router.post("/")
 def upload_document(
     background_tasks: BackgroundTasks,
