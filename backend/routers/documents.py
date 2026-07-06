@@ -2,7 +2,7 @@ import os
 import uuid
 import shutil
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 from database import get_db
 import models
