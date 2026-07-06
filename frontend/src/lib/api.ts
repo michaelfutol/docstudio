@@ -107,7 +107,7 @@ export async function fetchDocumentRecord(docId: string | number) {
 }
 
 export async function createProject(name: string, description?: string, industry?: string) {
-  const res = await fetch(`${API_BASE_URL}/projects`, {
+  const res = await fetch(`${API_BASE_URL}/projects/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, description, industry })
@@ -123,7 +123,7 @@ export async function exportProject(projectId: number | string, format: string) 
 }
 
 export async function createTemplate(name: string, schema_json: any, industry?: string, validation_rules?: any) {
-  const res = await fetch(`${API_BASE_URL}/templates`, {
+  const res = await fetch(`${API_BASE_URL}/templates/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, schema_json, industry: industry || "General", validation_rules })
