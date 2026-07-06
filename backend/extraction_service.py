@@ -179,7 +179,16 @@ Raw Document Text:
                   messages=[{"role": "user", "content": content}],
                   response_format={"type": "json_schema", "json_schema": {"name": "extraction", "schema": schema, "strict": False}}
                 )
-                extracted_json = json.loads(response.choices[0].message.content)
+                raw_content = response.choices[0].message.content
+                try:
+                    extracted_json = json.loads(raw_content, strict=False)
+                except json.JSONDecodeError:
+                    import re
+                    match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', raw_content)
+                    if match:
+                        extracted_json = json.loads(match.group(1), strict=False)
+                    else:
+                        raise ValueError(f"Could not parse JSON from response: {raw_content}")
             else:
                 client = genai.Client(api_key=api_key)
                 contents = [prompt]
