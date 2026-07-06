@@ -151,45 +151,55 @@ Raw Document Text:
 {chunk_text}
 """
             
+            openrouter_used = False
             openrouter_key = os.getenv("OPENROUTER_API_KEY")
+            
+            extracted_json = None
             if openrouter_key:
                 import base64
                 from openai import OpenAI
-                or_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=openrouter_key)
-                
-                content = [{"type": "text", "text": prompt}]
-                for p in chunk:
-                    if p.image_path and os.path.exists(p.image_path):
-                        try:
-                            with open(p.image_path, "rb") as image_file:
-                                encoded = base64.b64encode(image_file.read()).decode("utf-8")
-                                ext = os.path.splitext(p.image_path)[1].lower()
-                                mime_type = "image/png" if ext == ".png" else "image/jpeg"
-                                content.append({
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:{mime_type};base64,{encoded}"
-                                    }
-                                })
-                        except Exception as e:
-                            print(f"Failed to load image for OpenRouter: {e}")
-                
-                response = or_client.chat.completions.create(
-                  model="google/gemini-2.5-flash",
-                  messages=[{"role": "user", "content": content}],
-                  response_format={"type": "json_schema", "json_schema": {"name": "extraction", "schema": schema, "strict": False}}
-                )
-                raw_content = response.choices[0].message.content
                 try:
-                    extracted_json = json.loads(raw_content, strict=False)
-                except json.JSONDecodeError:
-                    import re
-                    match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', raw_content)
-                    if match:
-                        extracted_json = json.loads(match.group(1), strict=False)
-                    else:
-                        raise ValueError(f"Could not parse JSON from response: {raw_content}")
-            else:
+                    or_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=openrouter_key)
+                    
+                    content = [{"type": "text", "text": prompt}]
+                    for p in chunk:
+                        if p.image_path and os.path.exists(p.image_path):
+                            try:
+                                with open(p.image_path, "rb") as image_file:
+                                    encoded = base64.b64encode(image_file.read()).decode("utf-8")
+                                    ext = os.path.splitext(p.image_path)[1].lower()
+                                    mime_type = "image/png" if ext == ".png" else "image/jpeg"
+                                    content.append({
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:{mime_type};base64,{encoded}"
+                                        }
+                                    })
+                            except Exception as e:
+                                print(f"Failed to load image for OpenRouter: {e}")
+                    
+                    response = or_client.chat.completions.create(
+                      model="google/gemini-2.5-flash",
+                      messages=[{"role": "user", "content": content}],
+                      response_format={"type": "json_schema", "json_schema": {"name": "extraction", "schema": schema, "strict": False}}
+                    )
+                    raw_content = response.choices[0].message.content
+                    try:
+                        extracted_json = json.loads(raw_content, strict=False)
+                        openrouter_used = True
+                    except json.JSONDecodeError:
+                        import re
+                        match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', raw_content)
+                        if match:
+                            extracted_json = json.loads(match.group(1), strict=False)
+                            openrouter_used = True
+                        else:
+                            raise ValueError(f"Could not parse JSON from OpenRouter response: {raw_content}")
+                except Exception as or_e:
+                    print(f"OpenRouter failed (possibly out of credits): {or_e}. Falling back to Gemini Free API.")
+                    extracted_json = None
+            
+            if extracted_json is None:
                 client = genai.Client(api_key=api_key)
                 contents = [prompt]
                 from PIL import Image
@@ -236,7 +246,10 @@ Raw Document Text:
                 all_confidences.append(extracted_json["overall_confidence"])
                     
             if idx < total_chunks - 1:
-                time.sleep(1) # We use 1s for OpenRouter since it handles concurrency/rate limits better
+                if openrouter_used:
+                    time.sleep(1) # We use 1s for OpenRouter since it handles concurrency/rate limits better
+                else:
+                    time.sleep(5) # Respect Gemini free tier limits (15 requests per minute)
                 
         # Finalize
         confidence = sum(all_confidences) / len(all_confidences) if all_confidences else 0.90
