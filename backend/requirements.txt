@@ -14,3 +14,5 @@ cryptography
 openpyxl
 markdown
 xhtml2pdf
+
+openai

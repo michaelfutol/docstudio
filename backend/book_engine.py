@@ -92,16 +92,26 @@ Please insert them in the appropriate places in the Markdown using standard imag
 Make sure you include all of them exactly where they belong based on context.
 """
 
-            # Call Gemini
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=[prompt],
-                config=types.GenerateContentConfig(
-                    temperature=0.2,
+            # Call AI
+            openrouter_key = os.getenv("OPENROUTER_API_KEY")
+            if openrouter_key:
+                from openai import OpenAI
+                or_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=openrouter_key)
+                response = or_client.chat.completions.create(
+                  model="google/gemini-2.5-flash",
+                  messages=[{"role": "user", "content": prompt}],
+                  temperature=0.2
                 )
-            )
-            
-            md_text = response.text
+                md_text = response.choices[0].message.content
+            else:
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(
+                        temperature=0.2,
+                    )
+                )
+                md_text = response.text
             full_markdown += md_text + "\n\n---\n\n"
             
             # Respect API limits

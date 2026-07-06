@@ -151,24 +151,56 @@ Raw Document Text:
 {chunk_text}
 """
             
-            contents = [prompt]
-            for p in chunk:
-                if p.image_path and os.path.exists(p.image_path):
-                    try:
-                        img = Image.open(p.image_path)
-                        contents.append(img)
-                    except Exception as e:
-                        print(f"Failed to load image for Gemini: {e}")
-            
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema
-                ),
-            )
-            extracted_json = json.loads(response.text)
+            openrouter_key = os.getenv("OPENROUTER_API_KEY")
+            if openrouter_key:
+                import base64
+                from openai import OpenAI
+                or_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=openrouter_key)
+                
+                content = [{"type": "text", "text": prompt}]
+                for p in chunk:
+                    if p.image_path and os.path.exists(p.image_path):
+                        try:
+                            with open(p.image_path, "rb") as image_file:
+                                encoded = base64.b64encode(image_file.read()).decode("utf-8")
+                                ext = os.path.splitext(p.image_path)[1].lower()
+                                mime_type = "image/png" if ext == ".png" else "image/jpeg"
+                                content.append({
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{mime_type};base64,{encoded}"
+                                    }
+                                })
+                        except Exception as e:
+                            print(f"Failed to load image for OpenRouter: {e}")
+                
+                response = or_client.chat.completions.create(
+                  model="google/gemini-2.5-flash",
+                  messages=[{"role": "user", "content": content}],
+                  response_format={"type": "json_schema", "json_schema": {"name": "extraction", "schema": schema, "strict": False}}
+                )
+                extracted_json = json.loads(response.choices[0].message.content)
+            else:
+                client = genai.Client(api_key=api_key)
+                contents = [prompt]
+                from PIL import Image
+                for p in chunk:
+                    if p.image_path and os.path.exists(p.image_path):
+                        try:
+                            img = Image.open(p.image_path)
+                            contents.append(img)
+                        except Exception as e:
+                            print(f"Failed to load image for Gemini: {e}")
+                
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=schema
+                    ),
+                )
+                extracted_json = json.loads(response.text)
             
             # Merge logic
             if is_transcription:

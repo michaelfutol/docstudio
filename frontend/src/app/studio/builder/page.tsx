@@ -71,12 +71,16 @@ function BuilderContent() {
       }
       
       if (currentDoc.status === 'pending_review' || currentDoc.status === 'processed') {
-        try {
-          const record = await fetchDocumentRecord(docId);
-          setExtractedData(record);
-        } catch (err) {
-          console.error("Failed to fetch final record", err);
-          alert("Extraction finished, but failed to load the result.");
+        if (currentDoc.extraction_progress?.startsWith('Failed:')) {
+          alert(`Extraction failed: ${currentDoc.extraction_progress}`);
+        } else {
+          try {
+            const record = await fetchDocumentRecord(docId);
+            setExtractedData(record);
+          } catch (err) {
+            console.error("Failed to fetch final record", err);
+            alert("Extraction finished, but failed to load the result.");
+          }
         }
       }
       

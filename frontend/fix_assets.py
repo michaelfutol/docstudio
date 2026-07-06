@@ -32,7 +32,7 @@ for root, dirs, files in os.walk(out_dir):
 print(f"Replaced _next references in {replace_count} files.")
 
 import zipfile
-zip_path = '../docstudio-frontend-delete-header.zip'
+zip_path = '../docstudio-frontend-chunking.zip'
 print(f"Creating zip at {zip_path}...")
 with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
     for r, d, files in os.walk(out_dir):
