@@ -92,12 +92,11 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
     is_transcription = "full_transcription" in schema.get("properties", {})
     is_tabular = template.validation_rules and template.validation_rules.get("is_tabular", False)
     
-    # Merge field_confidences into the expected response schema so Gemini understands it's strictly required
+    # Merge overall_confidence into the expected response schema so Gemini understands it's strictly required
     if "properties" in schema:
-        schema["properties"]["field_confidences"] = {
-            "type": "object",
-            "description": "Mapping of extracted field keys to a float confidence score between 0.0 and 1.0",
-            "additionalProperties": {"type": "number"}
+        schema["properties"]["overall_confidence"] = {
+            "type": "number",
+            "description": "Overall confidence score for the extraction between 0.0 and 1.0"
         }
 
     # Chunking logic
@@ -129,7 +128,7 @@ CRITICAL RULES:
 1. PRESERVE ALL LAYOUT, spacing, paragraphs, and line breaks exactly as they appear.
 2. Do NOT summarize. Do NOT skip anything.
 3. If there are tables or columns, try to format them clearly using spaces or markdown.
-4. Provide a 'field_confidences' object mapping 'full_transcription' to a score (0.0 to 1.0).
+4. Provide an 'overall_confidence' score (0.0 to 1.0).
 
 Raw Document Text:
 {chunk_text}
@@ -146,7 +145,7 @@ Do NOT summarize or miss any rows. Output the data exactly as it appears in the 
                 prompt = f"""You are a data extraction assistant.
 Extract the structured data from the following document text according to the provided JSON schema.
 {tabular_instructions}
-Also, please provide a 'field_confidences' object at the root of your JSON response, mapping each extracted field key to a confidence score between 0.0 and 1.0.
+Also, please provide an 'overall_confidence' score between 0.0 and 1.0 at the root of your JSON response.
 
 Raw Document Text:
 {chunk_text}
@@ -184,18 +183,16 @@ Raw Document Text:
                     merged_data["data"].extend(extracted_json["data"])
                     # For other fields, take the first chunk's values
                     for k, v in extracted_json.items():
-                        if k not in ["data", "field_confidences"] and k not in merged_data:
+                        if k not in ["data", "overall_confidence"] and k not in merged_data:
                             merged_data[k] = v
                 else:
                     # General merge: just overwrite or fill missing
                     for k, v in extracted_json.items():
-                        if k != "field_confidences" and k not in merged_data:
+                        if k != "overall_confidence" and k not in merged_data:
                             merged_data[k] = v
                             
-            if "field_confidences" in extracted_json:
-                conf_values = extracted_json["field_confidences"].values()
-                if conf_values:
-                    all_confidences.extend(conf_values)
+            if "overall_confidence" in extracted_json:
+                all_confidences.append(extracted_json["overall_confidence"])
                     
             if idx < total_chunks - 1:
                 time.sleep(5) # Respect Gemini free tier limits (15 requests per minute -> 4s minimum, using 5s to be safe)
@@ -206,8 +203,7 @@ Raw Document Text:
         
         # Generate mock confidences if none exist
         if not all_confidences:
-            conf_map = {k: 0.90 for k in merged_data.keys()}
-            merged_data["field_confidences"] = conf_map
+            merged_data["field_confidences"] = {"overall": 0.90}
         else:
             merged_data["field_confidences"] = {"overall": confidence}
 
