@@ -101,6 +101,8 @@ def export_searchable_pdf(document_id: int, db: Session = Depends(get_db)):
         
     file_ext = os.path.splitext(doc.file_path)[1].lower()
     if file_ext == ".pdf":
+        if not os.path.exists(doc.file_path):
+            raise HTTPException(status_code=404, detail="Original PDF file is no longer on the server. Please re-upload the document.")
         return FileResponse(doc.file_path, media_type="application/pdf", filename=f"{doc.filename}")
     else:
         # It's an image, convert to basic PDF for export
