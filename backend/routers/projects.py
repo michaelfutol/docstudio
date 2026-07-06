@@ -7,6 +7,7 @@ from typing import List
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
+@router.get("")
 @router.get("/")
 def get_projects(db: Session = Depends(get_db)):
     projects = db.query(models.Project).all()

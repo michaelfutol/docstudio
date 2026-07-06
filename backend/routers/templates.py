@@ -6,6 +6,7 @@ import schemas
 
 router = APIRouter(prefix="/api/v1/templates", tags=["templates"])
 
+@router.get("")
 @router.get("/")
 def get_templates(db: Session = Depends(get_db)):
     templates = db.query(models.Template).all()
