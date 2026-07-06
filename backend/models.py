@@ -21,7 +21,8 @@ class Document(Base):
     project_id = Column(Integer, ForeignKey("projects.id"))
     filename = Column(String)
     file_path = Column(String)
-    status = Column(String, default="uploaded") # uploaded, processing, processed, failed
+    status = Column(String, default="uploaded") # uploaded, processing, processed, extracting, failed
+    extraction_progress = Column(String, nullable=True)
     doc_type = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

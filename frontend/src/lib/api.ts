@@ -100,6 +100,12 @@ export async function fetchRecord(recordId: string | number) {
   return res.json();
 }
 
+export async function fetchDocumentRecord(docId: string | number) {
+  const res = await fetch(`${API_BASE_URL}/documents/${docId}/record`);
+  if (!res.ok) throw new Error("Failed to fetch document record");
+  return res.json();
+}
+
 export async function createProject(name: string, description?: string, industry?: string) {
   const res = await fetch(`${API_BASE_URL}/projects`, {
     method: 'POST',

@@ -59,15 +59,30 @@ function BuilderContent() {
     setExtracting(true);
     setExtractedData(null);
     try {
-      const res = await triggerExtraction(docId, parseInt(selectedTemplateId));
+      await triggerExtraction(docId, parseInt(selectedTemplateId));
       
-      // Fetch the actual record
-      const record = await fetchRecord(res.record_id);
-      setExtractedData(record);
+      // Poll for completion
+      let currentDoc = await fetchDocument(docId);
+      setDoc(currentDoc);
+      while (currentDoc.status === 'extracting') {
+        await new Promise(r => setTimeout(r, 3000));
+        currentDoc = await fetchDocument(docId);
+        setDoc(currentDoc);
+      }
+      
+      if (currentDoc.status === 'pending_review' || currentDoc.status === 'processed') {
+        try {
+          const record = await fetchDocumentRecord(docId);
+          setExtractedData(record);
+        } catch (err) {
+          console.error("Failed to fetch final record", err);
+          alert("Extraction finished, but failed to load the result.");
+        }
+      }
       
     } catch (e) {
       console.error(e);
-      alert("Extraction failed. Did you add GEMINI_API_KEY?");
+      alert("Extraction request failed.");
     } finally {
       setExtracting(false);
     }
@@ -200,7 +215,9 @@ function BuilderContent() {
               {extracting && (
                 <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-5">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  <p className="font-medium text-sm animate-pulse">AI is extracting data...</p>
+                  <p className="font-medium text-sm animate-pulse">
+                    {doc?.extraction_progress || "AI is extracting data..."}
+                  </p>
                 </div>
               )}
 

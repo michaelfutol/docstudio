@@ -57,15 +57,26 @@ def get_document(document_id: int, db: Session = Depends(get_db)):
         "id": doc.id,
         "filename": doc.filename,
         "status": doc.status,
+        "extraction_progress": doc.extraction_progress,
         "pages": pages
     }
 
 @router.post("/{document_id}/extract")
-def trigger_extraction(document_id: int, req: schemas.ExtractRequest, db: Session = Depends(get_db)):
-    record = extract_structured_data(db, document_id, req.template_id)
+def trigger_extraction(
+    document_id: int, 
+    req: schemas.ExtractRequest, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    background_tasks.add_task(extract_structured_data, db, document_id, req.template_id)
+    return {"message": "Extraction started in background"}
+
+@router.get("/{document_id}/record")
+def get_document_record(document_id: int, db: Session = Depends(get_db)):
+    record = db.query(models.ExtractedRecord).filter(models.ExtractedRecord.document_id == document_id).order_by(models.ExtractedRecord.id.desc()).first()
     if not record:
-        raise HTTPException(status_code=400, detail="Failed to extract data")
-    return {"message": "Extraction complete", "record_id": record.id}
+        raise HTTPException(status_code=404, detail="Record not found")
+    return record
 
 @router.put("/{document_id}/pages/{page_number}/text")
 def update_page_text(document_id: int, page_number: int, req: schemas.PageTextUpdate, db: Session = Depends(get_db)):

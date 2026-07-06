@@ -17,6 +17,7 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
 
     # Update document status
     doc.status = "extracting"
+    doc.extraction_progress = "Initializing extraction..."
     db.commit()
 
     # Fetch all pages
@@ -83,47 +84,13 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
         return record
 
     # Real AI Extraction via Google Gemini
+    import time
     client = genai.Client(api_key=api_key)
     
     # Check if this is a transcription template
     schema = template.schema_json if template.schema_json else {"type": "object", "properties": {}}
     is_transcription = "full_transcription" in schema.get("properties", {})
-    
     is_tabular = template.validation_rules and template.validation_rules.get("is_tabular", False)
-    
-    if is_transcription:
-        prompt = f"""
-        You are a highly precise document transcription assistant.
-        Your sole task is to perfectly transcribe the following document text into the 'full_transcription' field.
-        
-        CRITICAL RULES:
-        1. PRESERVE ALL LAYOUT, spacing, paragraphs, and line breaks exactly as they appear.
-        2. Do NOT summarize. Do NOT skip anything.
-        3. If there are tables or columns, try to format them clearly using spaces or markdown.
-        4. Provide a 'field_confidences' object mapping 'full_transcription' to a score (0.0 to 1.0).
-        
-        Raw Document Text:
-        {full_text}
-        """
-    else:
-        tabular_instructions = ""
-        if is_tabular:
-            tabular_instructions = """
-        CRITICAL TABULAR EXTRACTION RULES:
-        This is a tabular data extraction task (e.g. Material Schedule, Invoice Line Items).
-        You MUST extract every single row or line item found in the document into the 'data' array.
-        Do NOT summarize or miss any rows. Output the data exactly as it appears in the table.
-        """
-            
-        prompt = f"""
-        You are a data extraction assistant.
-        Extract the structured data from the following document text according to the provided JSON schema.
-        {tabular_instructions}
-        Also, please provide a 'field_confidences' object at the root of your JSON response, mapping each extracted field key (including nested keys using dot notation) to a confidence score between 0.0 and 1.0.
-        
-        Raw Document Text:
-        {full_text}
-        """
     
     # Merge field_confidences into the expected response schema so Gemini understands it's strictly required
     if "properties" in schema:
@@ -133,66 +100,135 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
             "additionalProperties": {"type": "number"}
         }
 
+    # Chunking logic
+    CHUNK_SIZE = 10
+    chunks = [pages[i:i + CHUNK_SIZE] for i in range(0, len(pages), CHUNK_SIZE)]
+    
+    merged_data = {}
+    all_confidences = []
+    
     try:
-        contents = [prompt]
-        
-        # Attach images for Gemini Vision (Cap at 10 to prevent payload too large errors)
         from PIL import Image
-        image_count = 0
-        for p in pages:
-            if image_count >= 10:
-                break
-            if p.image_path and os.path.exists(p.image_path):
-                try:
-                    img = Image.open(p.image_path)
-                    contents.append(img)
-                    image_count += 1
-                except Exception as e:
-                    print(f"Failed to load image for Gemini: {e}")
+        for idx, chunk in enumerate(chunks):
+            # Update progress
+            chunk_num = idx + 1
+            total_chunks = len(chunks)
+            if total_chunks > 1:
+                est_seconds = (total_chunks - chunk_num) * 5
+                est_str = f"{est_seconds // 60} mins {est_seconds % 60} secs" if est_seconds >= 60 else f"{est_seconds} secs"
+                doc.extraction_progress = f"Processing chunk {chunk_num} of {total_chunks}... Estimated time remaining: {est_str}"
+            else:
+                doc.extraction_progress = "Processing document with AI..."
+            db.commit()
+            
+            chunk_text = "\n\n".join([f"--- Page {p.page_number} ---\n{p.text_content}" for p in chunk if p.text_content])
+            
+            if is_transcription:
+                prompt = f"""You are a highly precise document transcription assistant. Your sole task is to perfectly transcribe the following document text into the 'full_transcription' field.
+CRITICAL RULES:
+1. PRESERVE ALL LAYOUT, spacing, paragraphs, and line breaks exactly as they appear.
+2. Do NOT summarize. Do NOT skip anything.
+3. If there are tables or columns, try to format them clearly using spaces or markdown.
+4. Provide a 'field_confidences' object mapping 'full_transcription' to a score (0.0 to 1.0).
 
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=schema
-            ),
-        )
-        extracted_json = json.loads(response.text)
+Raw Document Text:
+{chunk_text}
+"""
+            else:
+                tabular_instructions = ""
+                if is_tabular:
+                    tabular_instructions = """
+CRITICAL TABULAR EXTRACTION RULES:
+This is a tabular data extraction task (e.g. Material Schedule, Invoice Line Items).
+You MUST extract every single row or line item found in the document into the 'data' array.
+Do NOT summarize or miss any rows. Output the data exactly as it appears in the table.
+"""
+                prompt = f"""You are a data extraction assistant.
+Extract the structured data from the following document text according to the provided JSON schema.
+{tabular_instructions}
+Also, please provide a 'field_confidences' object at the root of your JSON response, mapping each extracted field key to a confidence score between 0.0 and 1.0.
+
+Raw Document Text:
+{chunk_text}
+"""
+            
+            contents = [prompt]
+            for p in chunk:
+                if p.image_path and os.path.exists(p.image_path):
+                    try:
+                        img = Image.open(p.image_path)
+                        contents.append(img)
+                    except Exception as e:
+                        print(f"Failed to load image for Gemini: {e}")
+            
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=schema
+                ),
+            )
+            extracted_json = json.loads(response.text)
+            
+            # Merge logic
+            if is_transcription:
+                if "full_transcription" in extracted_json:
+                    if "full_transcription" not in merged_data:
+                        merged_data["full_transcription"] = ""
+                    merged_data["full_transcription"] += extracted_json["full_transcription"] + "\n\n"
+            else:
+                if is_tabular and "data" in extracted_json:
+                    if "data" not in merged_data:
+                        merged_data["data"] = []
+                    merged_data["data"].extend(extracted_json["data"])
+                    # For other fields, take the first chunk's values
+                    for k, v in extracted_json.items():
+                        if k not in ["data", "field_confidences"] and k not in merged_data:
+                            merged_data[k] = v
+                else:
+                    # General merge: just overwrite or fill missing
+                    for k, v in extracted_json.items():
+                        if k != "field_confidences" and k not in merged_data:
+                            merged_data[k] = v
+                            
+            if "field_confidences" in extracted_json:
+                conf_values = extracted_json["field_confidences"].values()
+                if conf_values:
+                    all_confidences.extend(conf_values)
+                    
+            if idx < total_chunks - 1:
+                time.sleep(5) # Respect Gemini free tier limits (15 requests per minute -> 4s minimum, using 5s to be safe)
+                
+        # Finalize
+        confidence = sum(all_confidences) / len(all_confidences) if all_confidences else 0.90
+        needs_review = any(c < 0.95 for c in all_confidences) if all_confidences else True
         
-        # Determine overall confidence
-        confidence = 0.90
-        needs_review = False
-        
-        if "field_confidences" in extracted_json:
-            conf_values = extracted_json["field_confidences"].values()
-            if conf_values:
-                confidence = sum(conf_values) / len(conf_values)
-                needs_review = any(c < 0.95 for c in conf_values)
+        # Generate mock confidences if none exist
+        if not all_confidences:
+            conf_map = {k: 0.90 for k in merged_data.keys()}
+            merged_data["field_confidences"] = conf_map
         else:
-            # Generate mock field confidences if LLM didn't return them
-            conf_map = {}
-            for k in extracted_json.keys():
-                conf_map[k] = 0.90
-            extracted_json["field_confidences"] = conf_map
-            needs_review = True
-        
+            merged_data["field_confidences"] = {"overall": confidence}
+
         record = models.ExtractedRecord(
             document_id=doc.id,
             template_id=template.id,
-            record_data=extracted_json,
+            record_data=merged_data,
             confidence=confidence,
             needs_review=needs_review,
             status="pending"
         )
         db.add(record)
         doc.status = "pending_review"
+        doc.extraction_progress = "Complete!"
         db.commit()
         db.refresh(record)
         return record
-        
+
     except Exception as e:
         print(f"Extraction failed: {e}")
         doc.status = "processed"
+        doc.extraction_progress = f"Failed: {str(e)}"
         db.commit()
         return None
