@@ -66,6 +66,13 @@ def startup_tasks():
         db.commit()
     except Exception:
         db.rollback() # Column likely exists
+        
+    try:
+        # Check and add 'extraction_progress' to documents
+        db.execute(text("ALTER TABLE documents ADD COLUMN extraction_progress VARCHAR"))
+        db.commit()
+    except Exception:
+        db.rollback() # Column likely exists
 
     # 1.5 Fix existing seed data industries and schema
     try:
