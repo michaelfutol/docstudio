@@ -171,6 +171,54 @@ def export_searchable_pdf(document_id: int, db: Session = Depends(get_db)):
                 
         return FileResponse(searchable_path, media_type="application/pdf", filename=f"{doc.filename}.pdf")
 
+@router.get("/{document_id}/processing_report")
+def get_processing_report(document_id: int, db: Session = Depends(get_db)):
+    doc = db.query(models.Document).filter(models.Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+        
+    pages = db.query(models.DocumentPage).filter(models.DocumentPage.document_id == document_id).order_by(models.DocumentPage.page_number).all()
+    
+    report_pages = []
+    total_pages = len(pages)
+    successful_conversions = 0
+    blank_pages = 0
+    
+    for p in pages:
+        has_text = bool(p.text_content and p.text_content.strip())
+        
+        is_ai_ocr = False
+        lines = p.ocr_json.get("pages", [{}])[0].get("lines", []) if p.ocr_json else []
+        if lines and lines[0].get("confidence") == 0.95:
+            is_ai_ocr = True
+            
+        if has_text:
+            source = "AI OCR (Gemini)" if is_ai_ocr else "Native PDF Text"
+            status = "Success"
+            remarks = f"Extracted {len(p.text_content.strip())} characters successfully."
+            successful_conversions += 1
+        else:
+            source = "Scanned Image"
+            status = "Blank / Empty"
+            remarks = "No text detected. The page might be blank or the text is too small/blurry to read."
+            blank_pages += 1
+            
+        report_pages.append({
+            "page_number": p.page_number,
+            "status": status,
+            "source": source,
+            "char_count": len(p.text_content.strip()) if p.text_content else 0,
+            "remarks": remarks
+        })
+        
+    return {
+        "document_name": doc.filename,
+        "total_pages": total_pages,
+        "successful_conversions": successful_conversions,
+        "blank_pages": blank_pages,
+        "pages": report_pages
+    }
+
 @router.get("/{document_id}/export/text")
 def export_text(document_id: int, db: Session = Depends(get_db)):
     doc = db.query(models.Document).filter(models.Document.id == document_id).first()

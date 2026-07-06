@@ -39,6 +39,26 @@ def process_document_ocr(db: Session, document_id: int):
                 with open(image_path, "wb") as f:
                     f.write(img_data)
                 
+                # Extract embedded page images for the recreated book
+                try:
+                    exports_dir = os.path.join("exports", str(doc.id))
+                    images_dir = os.path.join(exports_dir, "images")
+                    os.makedirs(images_dir, exist_ok=True)
+                    
+                    image_list = page.get_images(full=True)
+                    for img_idx, img in enumerate(image_list):
+                        xref = img[0]
+                        base_image = pdf_document.extract_image(xref)
+                        image_bytes = base_image["image"]
+                        image_ext = base_image["ext"]
+                        
+                        img_filename = f"page_{page_num + 1}_img_{img_idx}.{image_ext}"
+                        img_filepath = os.path.join(images_dir, img_filename)
+                        with open(img_filepath, "wb") as img_file:
+                            img_file.write(image_bytes)
+                except Exception as img_err:
+                    print(f"Failed to extract embedded images on page {page_num+1}: {img_err}")
+                
                 # Extract text blocks
                 text_dict = page.get_text("dict")
                 page_text = page.get_text()
@@ -57,7 +77,7 @@ def process_document_ocr(db: Session, document_id: int):
                             response = client.models.generate_content(
                                 model='gemini-2.5-flash',
                                 contents=[
-                                    "Transcribe the text in this page image exactly. Do not add markdown or comments. Preserve line breaks.",
+                                    "Transcribe the text in this page image exactly, including all small print, footnotes, index tables, and cataloging details. Do not summarize or omit anything. Even if the text is very small, transcribe it verbatim. Do not add explanations or comments. Preserve line breaks.",
                                     img
                                 ]
                             )
