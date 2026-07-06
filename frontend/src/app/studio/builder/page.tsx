@@ -3,9 +3,9 @@
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ChevronLeft, Database, Check, AlertCircle, ArrowRight, Play, Download, FileText, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronLeft, Database, Check, AlertCircle, ArrowRight, Play, Download, FileText, ZoomIn, ZoomOut, BookOpen } from "lucide-react";
 import Link from "next/link";
-import { fetchTemplates, triggerExtraction, fetchDocument, fetchRecord, API_BASE_URL } from "@/lib/api";
+import { fetchTemplates, triggerExtraction, fetchDocument, fetchRecord, fetchDocumentRecord, API_BASE_URL } from "@/lib/api";
 import { DocumentViewer } from "@/components/studio/document-viewer";
 import { PipelineStepper } from "@/components/ui/pipeline-stepper";
 
@@ -83,6 +83,28 @@ function BuilderContent() {
     } catch (e) {
       console.error(e);
       alert("Extraction request failed.");
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleRecreateBook = async () => {
+    setExtracting(true);
+    setExtractedData(null);
+    try {
+      await fetch(`${API_BASE_URL}/documents/${docId}/recreate_book`, { method: "POST" });
+      
+      let currentDoc = await fetchDocument(docId);
+      setDoc(currentDoc);
+      while (currentDoc.status === 'recreating_book') {
+        await new Promise(r => setTimeout(r, 3000));
+        currentDoc = await fetchDocument(docId);
+        setDoc(currentDoc);
+      }
+      
+    } catch (e) {
+      console.error(e);
+      alert("Book recreation request failed.");
     } finally {
       setExtracting(false);
     }
@@ -166,9 +188,9 @@ function BuilderContent() {
               </Button>
             </div>
             
-            <div>
+            <div className="flex gap-2">
               <select 
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm"
+                className="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm"
                 value={selectedTemplateId}
                 onChange={e => setSelectedTemplateId(e.target.value)}
               >
@@ -179,6 +201,10 @@ function BuilderContent() {
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
+              <Button onClick={handleRecreateBook} disabled={extracting} size="default" variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-800 transition-colors shadow-sm h-auto py-2 px-4 whitespace-nowrap">
+                <BookOpen className="mr-2 h-4 w-4" />
+                Recreate Book as PDF
+              </Button>
             </div>
           </div>
 
@@ -205,10 +231,26 @@ function BuilderContent() {
             </div>
             
             <div className="flex-1 p-0 overflow-auto bg-slate-50/30">
-              {!extractedData && !extracting && (
+              {!extractedData && !extracting && doc?.status !== 'book_recreated' && (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
                   <Database className="h-10 w-10 text-slate-300" />
                   <p className="font-medium text-slate-500 text-sm">Results will appear here.</p>
+                </div>
+              )}
+              
+              {doc?.status === 'book_recreated' && !extracting && (
+                <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4">
+                  <BookOpen className="h-16 w-16 text-indigo-500 mb-2" />
+                  <h3 className="font-bold text-lg text-slate-800">Book Recreated Successfully!</h3>
+                  <p className="font-medium text-slate-500 text-sm text-center px-8">
+                    Your beautiful new PDF with completely redone typesetting and original illustrations is ready.
+                  </p>
+                  <Button 
+                    className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
+                    onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/download_book`, '_blank')}
+                  >
+                    <Download className="mr-2 h-4 w-4" /> Download Final Book (PDF)
+                  </Button>
                 </div>
               )}
               

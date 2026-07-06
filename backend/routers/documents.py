@@ -10,6 +10,7 @@ import schemas
 from typing import Optional
 from ocr_service import process_document_ocr
 from extraction_service import extract_structured_data
+import book_engine
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
@@ -185,3 +186,31 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"message": "Document deleted successfully"}
+
+@router.post("/{doc_id}/recreate_book")
+def recreate_book(doc_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    doc = db.query(models.Document).filter(models.Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+        
+    # Queue background task
+    background_tasks.add_task(book_engine.process_recreate_book, db, doc_id)
+    
+    # Update immediate status
+    doc.status = "recreating_book"
+    doc.extraction_progress = "Starting Book Recreation Engine..."
+    db.commit()
+    
+    return {"message": "Book recreation started in background"}
+
+@router.get("/{doc_id}/download_book")
+def download_recreated_book(doc_id: int, db: Session = Depends(get_db)):
+    doc = db.query(models.Document).filter(models.Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+        
+    pdf_path = os.path.join("exports", str(doc_id), "recreated_book.pdf")
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="Recreated book PDF not found or not finished yet.")
+        
+    return FileResponse(pdf_path, media_type="application/pdf", filename=f"Recreated_{doc.filename}.pdf")
