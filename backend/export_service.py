@@ -44,11 +44,10 @@ def export_all_approved(db: Session, format_type: str):
 
 def export_by_document(db: Session, document_id: int, format_type: str):
     """
-    Export approved records for a single document.
+    Export records for a single document (approved or pending review).
     """
     records = db.query(models.ExtractedRecord).filter(
-        models.ExtractedRecord.document_id == document_id,
-        models.ExtractedRecord.status == 'approved'
+        models.ExtractedRecord.document_id == document_id
     ).all()
 
     return _format_records(records, format_type)

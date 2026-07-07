@@ -241,7 +241,7 @@ def export_text(document_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
         
-    # Check if there's an AI extraction with a full_transcription
+    # 1. Check if there's an AI extraction with a full_transcription
     record = db.query(models.ExtractedRecord).filter(models.ExtractedRecord.document_id == document_id).first()
     if record and record.record_data and "full_transcription" in record.record_data:
         text_content = record.record_data["full_transcription"]
@@ -251,18 +251,31 @@ def export_text(document_id: int, db: Session = Depends(get_db)):
             headers={"Content-Disposition": f'attachment; filename="{doc.filename}_transcription.txt"'}
         )
         
-    # Fallback to raw OCR text
-    txt_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_raw.txt")
-    if not os.path.exists(txt_path) or os.path.getsize(txt_path) == 0:
-        # If it's an image or empty, return a helpful message
-        helpful_message = "Raw text extraction requires a PDF document. Since this is an image, please use the 'Layout-Preserving Transcription' template to extract text using AI."
+    # 2. Check if we have transcribed pages in the database
+    pages = db.query(models.DocumentPage).filter(models.DocumentPage.document_id == document_id).order_by(models.DocumentPage.page_number).all()
+    db_text = ""
+    for p in pages:
+        if p.text_content:
+            db_text += p.text_content + "\n\n"
+            
+    if db_text.strip():
         return Response(
-            content=helpful_message,
+            content=db_text.strip(),
             media_type="text/plain",
-            headers={"Content-Disposition": f'attachment; filename="{doc.filename}_raw_text_info.txt"'}
+            headers={"Content-Disposition": f'attachment; filename="{doc.filename}_ocr_text.txt"'}
         )
         
-    return FileResponse(txt_path, media_type="text/plain", filename=f"{doc.filename}_raw.txt")
+    # 3. Fallback to raw OCR text file
+    txt_path = os.path.join(os.path.dirname(doc.file_path), f"{doc.id}_raw.txt")
+    if os.path.exists(txt_path) and os.path.getsize(txt_path) > 0:
+        return FileResponse(txt_path, media_type="text/plain", filename=f"{doc.filename}_raw.txt")
+        
+    helpful_message = "No text extraction available. Please run extraction or transcribe the pages first."
+    return Response(
+        content=helpful_message,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{doc.filename}_no_text.txt"'}
+    )
 
 @router.delete("/{document_id}")
 def delete_document(document_id: int, db: Session = Depends(get_db)):
