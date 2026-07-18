@@ -8,6 +8,9 @@ export type PipelineStage =
   | "extracting" 
   | "pending_review" 
   | "approved" 
+  | "rejected"
+  | "recreating_book"
+  | "book_recreated"
   | "exported" 
   | "failed";
 
@@ -32,8 +35,11 @@ export function PipelineStepper({ currentStage }: PipelineStepperProps) {
     extracting: 2,
     pending_review: 3,
     approved: 4,
+    rejected: 3,
+    recreating_book: 2,
+    book_recreated: 4,
     exported: 4,
-    failed: -1
+    failed: 1,
   };
 
   const currentIndex = stageIndexMap[currentStage] ?? 0;

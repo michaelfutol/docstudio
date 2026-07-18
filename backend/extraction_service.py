@@ -1,5 +1,6 @@
 import os
 import json
+from copy import deepcopy
 from sqlalchemy.orm import Session
 import models
 from google import genai
@@ -25,72 +26,72 @@ def extract_structured_data(db: Session, document_id: int, template_id: int):
     full_text = "\n\n".join([f"--- Page {p.page_number} ---\n{p.text_content}" for p in pages if p.text_content])
 
     api_key = os.getenv("GEMINI_API_KEY")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    if api_key and "YOUR_GEMINI_API_KEY" in api_key:
+        api_key = None
+    if openrouter_key and "YOUR_OPENROUTER_API_KEY" in openrouter_key:
+        openrouter_key = None
     
     has_images = any(p.image_path and os.path.exists(p.image_path) for p in pages)
     
-    # If API key is not set or there's absolutely no text and no images, fallback to mock data
-    if not api_key or "YOUR_GEMINI_API_KEY_HERE" in api_key or (not full_text and not has_images):
-        # Mocking extraction based on the template schema dynamically
-        def generate_mock_value(schema_node, field_name=""):
-            node_type = schema_node.get("type", "string")
-            if node_type == "object":
-                props = schema_node.get("properties", {})
-                return {k: generate_mock_value(v, k) for k, v in props.items()}
-            elif node_type == "array":
-                items_schema = schema_node.get("items", {"type": "string"})
-                return [generate_mock_value(items_schema, field_name)]
-            elif node_type == "number" or node_type == "integer":
-                return 42
-            elif node_type == "boolean":
-                return True
-            else:
-                return f"Mock {field_name.capitalize()}" if field_name else "Mock Value"
-                
-        def generate_confidences(data, prefix=""):
-            confs = {}
-            if isinstance(data, dict):
-                for k, v in data.items():
-                    key_path = f"{prefix}.{k}" if prefix else k
-                    if isinstance(v, dict):
-                        confs.update(generate_confidences(v, key_path))
-                    elif isinstance(v, list):
-                        confs.update(generate_confidences(v, key_path))
-                    else:
-                        confs[key_path] = 0.99
-            elif isinstance(data, list):
-                confs[prefix] = 0.99
-            return confs
+    schema = deepcopy(template.schema_json) if template.schema_json else {"type": "object", "properties": {}}
+    legacy_root_array = schema.get("type") == "array"
+    if legacy_root_array:
+        schema = {
+            "type": "object",
+            "properties": {"data": schema},
+        }
 
-        schema = template.schema_json if template.schema_json else {"type": "object"}
-        mock_extracted_data = generate_mock_value(schema)
-        mock_confidences = generate_confidences(mock_extracted_data)
-        
-        # Merge confidences back in if it's an object
-        if isinstance(mock_extracted_data, dict):
-            mock_extracted_data["field_confidences"] = mock_confidences
+    # Check if this is a transcription or tabular template.
+    is_transcription = "full_transcription" in schema.get("properties", {})
+    is_tabular = bool(
+        legacy_root_array
+        or (template.validation_rules and template.validation_rules.get("is_tabular", False))
+        or schema.get("properties", {}).get("data", {}).get("type") == "array"
+    )
 
+    if not full_text and not has_images:
+        doc.status = "processed"
+        doc.extraction_progress = "Failed: no readable text or page images are available"
+        db.commit()
+        return None
+
+    # A transcription template can produce a truthful result directly from
+    # native/OCR page text without calling an AI provider.
+    if is_transcription and full_text and not api_key and not openrouter_key:
+        transcription = "\n\n".join(
+            page.text_content.strip()
+            for page in pages
+            if page.text_content and page.text_content.strip()
+        )
+        confidence_values = [page.confidence for page in pages if page.confidence is not None]
+        confidence = sum(confidence_values) / len(confidence_values) if confidence_values else 1.0
         record = models.ExtractedRecord(
             document_id=doc.id,
             template_id=template.id,
-            record_data=mock_extracted_data,
-            confidence=0.99,
-            needs_review=False,
-            status="pending"
+            record_data={
+                "full_transcription": transcription,
+                "field_confidences": {"full_transcription": confidence},
+            },
+            confidence=confidence,
+            needs_review=confidence < 0.95,
+            status="pending",
         )
         db.add(record)
         doc.status = "pending_review"
+        doc.extraction_progress = "Complete!"
         db.commit()
         db.refresh(record)
         return record
 
-    # Real AI Extraction via Google Gemini
+    if not api_key and not openrouter_key:
+        doc.status = "processed"
+        doc.extraction_progress = "Failed: configure GEMINI_API_KEY or OPENROUTER_API_KEY to extract structured data"
+        db.commit()
+        return None
+
+    # Real AI extraction.
     import time
-    client = genai.Client(api_key=api_key)
-    
-    # Check if this is a transcription template
-    schema = template.schema_json if template.schema_json else {"type": "object", "properties": {}}
-    is_transcription = "full_transcription" in schema.get("properties", {})
-    is_tabular = template.validation_rules and template.validation_rules.get("is_tabular", False)
     
     # Merge overall_confidence into the expected response schema so Gemini understands it's strictly required
     if "properties" in schema:
@@ -152,7 +153,6 @@ Raw Document Text:
 """
             
             openrouter_used = False
-            openrouter_key = os.getenv("OPENROUTER_API_KEY")
             
             extracted_json = None
             if openrouter_key:
@@ -200,6 +200,8 @@ Raw Document Text:
                     extracted_json = None
             
             if extracted_json is None:
+                if not api_key:
+                    raise RuntimeError("OpenRouter extraction failed and GEMINI_API_KEY is not configured for fallback")
                 client = genai.Client(api_key=api_key)
                 contents = [prompt]
                 from PIL import Image
@@ -222,6 +224,9 @@ Raw Document Text:
                 extracted_json = json.loads(response.text)
             
             # Merge logic
+            if not isinstance(extracted_json, dict):
+                raise ValueError("AI provider returned a non-object response")
+
             if is_transcription:
                 if "full_transcription" in extracted_json:
                     if "full_transcription" not in merged_data:

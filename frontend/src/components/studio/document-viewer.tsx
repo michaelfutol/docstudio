@@ -1,31 +1,16 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
-import { ZoomIn, ZoomOut, MousePointerSquareDashed } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { API_BASE_URL } from "@/lib/api";
+import React, { useRef, useEffect } from "react";
+import Image from "next/image";
+import { BACKEND_BASE_URL, type OCRLine } from "@/lib/api";
 
-const BACKEND_URL = API_BASE_URL.replace('/api/v1', '');
-
-interface BBox {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}
-
-interface OCRLine {
-  text: string;
-  confidence: number;
-  bbox: number[];
-  needsReview: boolean;
-}
+const BACKEND_URL = BACKEND_BASE_URL;
 
 interface DocumentViewerProps {
   imagePath: string;
   lines: OCRLine[];
-  imageWidth: number;
-  imageHeight: number;
+  imageWidth: number | null;
+  imageHeight: number | null;
   hoveredLineIndex: number | null;
   onLineClick: (index: number) => void;
   onLineHover: (index: number | null) => void;
@@ -43,7 +28,6 @@ export function DocumentViewer({
   setScale
 }: DocumentViewerProps & { scale: number, setScale: (s: number) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // Calculate base scale to fit the image
   useEffect(() => {
@@ -51,8 +35,6 @@ export function DocumentViewer({
     
     const observer = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
-      setContainerSize({ width, height });
-      
       // Calculate fit scale
       const scaleX = (width - 40) / imageWidth;
       const scaleY = (height - 40) / imageHeight;
@@ -111,15 +93,18 @@ export function DocumentViewer({
         <div 
           className="relative bg-white shadow-lg border border-slate-200 origin-center transition-transform"
           style={{ 
-            width: imageWidth, 
-            height: imageHeight,
+            width: imageWidth || 1,
+            height: imageHeight || 1,
             transform: `scale(${scale})`,
           }}
         >
           {/* Base Image */}
-          <img 
+          <Image
             src={`${BACKEND_URL}/${imagePath.replace(/\\/g, '/')}`} 
             alt="Source Document" 
+            width={imageWidth || 1}
+            height={imageHeight || 1}
+            unoptimized
             className="w-full h-full object-contain pointer-events-none"
           />
 

@@ -1,36 +1,71 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { ChevronLeft, Database, Check, AlertCircle, ArrowRight, Play, Download, FileText, ZoomIn, ZoomOut, BookOpen } from "lucide-react";
 import Link from "next/link";
-import { fetchTemplates, triggerExtraction, fetchDocument, fetchRecord, fetchDocumentRecord, API_BASE_URL } from "@/lib/api";
+import {
+  documentExportUrl,
+  fetchTemplates,
+  triggerExtraction,
+  fetchDocument,
+  fetchDocumentRecord,
+  recreateBook,
+  type ExtractedRecord,
+  type JsonObject,
+  type StudioDocument,
+  type Template,
+} from "@/lib/api";
 import { DocumentViewer } from "@/components/studio/document-viewer";
 import { PipelineStepper } from "@/components/ui/pipeline-stepper";
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
+function fieldConfidence(recordData: JsonObject, key: string): number | undefined {
+  const confidences = recordData.field_confidences;
+  if (!confidences || Array.isArray(confidences) || typeof confidences !== "object") return undefined;
+  const value = confidences[key];
+  return typeof value === "number" ? value : undefined;
+}
+
+async function waitForDocument(
+  documentId: string,
+  activeStatuses: Set<string>,
+  onUpdate: (document: StudioDocument) => void,
+): Promise<StudioDocument> {
+  const deadline = Date.now() + 5 * 60 * 1000;
+  let current = await fetchDocument(documentId);
+  onUpdate(current);
+  while (activeStatuses.has(current.status)) {
+    if (Date.now() >= deadline) throw new Error("The operation timed out after five minutes");
+    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    current = await fetchDocument(documentId);
+    onUpdate(current);
+  }
+  return current;
+}
+
 function BuilderContent() {
   const searchParams = useSearchParams();
   const docId = searchParams.get("docId") || "";
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
-  const [extractedData, setExtractedData] = useState<any>(null);
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [extractedData, setExtractedData] = useState<ExtractedRecord | null>(null);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-  const [doc, setDoc] = useState<any>(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [doc, setDoc] = useState<StudioDocument | null>(null);
+  const currentPage = 1;
   const [hoveredLineIndex, setHoveredLineIndex] = useState<number | null>(null);
   const [sourceZoom, setSourceZoom] = useState(1);
   const [activeIndustry, setActiveIndustry] = useState<string>("All");
 
   useEffect(() => {
     const savedIndustry = localStorage.getItem('selectedIndustry');
-    if (savedIndustry) {
-      setActiveIndustry(savedIndustry);
-    }
+    const timer = window.setTimeout(() => {
+      if (savedIndustry) setActiveIndustry(savedIndustry);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -61,32 +96,17 @@ function BuilderContent() {
     try {
       await triggerExtraction(docId, parseInt(selectedTemplateId));
       
-      // Poll for completion
-      let currentDoc = await fetchDocument(docId);
-      setDoc(currentDoc);
-      while (currentDoc.status === 'extracting') {
-        await new Promise(r => setTimeout(r, 3000));
-        currentDoc = await fetchDocument(docId);
-        setDoc(currentDoc);
+      const currentDoc = await waitForDocument(docId, new Set(["extracting"]), setDoc);
+      if (currentDoc.extraction_progress?.startsWith("Failed:")) {
+        throw new Error(currentDoc.extraction_progress.replace(/^Failed:\s*/, ""));
       }
-      
-      if (currentDoc.status === 'pending_review' || currentDoc.status === 'processed') {
-        if (currentDoc.extraction_progress?.startsWith('Failed:')) {
-          alert(`Extraction failed: ${currentDoc.extraction_progress}`);
-        } else {
-          try {
-            const record = await fetchDocumentRecord(docId);
-            setExtractedData(record);
-          } catch (err) {
-            console.error("Failed to fetch final record", err);
-            alert("Extraction finished, but failed to load the result.");
-          }
-        }
+      if (currentDoc.status !== "pending_review") {
+        throw new Error(`Extraction stopped with status: ${currentDoc.status.replaceAll("_", " ")}`);
       }
-      
-    } catch (e) {
-      console.error(e);
-      alert("Extraction request failed.");
+      setExtractedData(await fetchDocumentRecord(docId));
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : "Extraction request failed");
     } finally {
       setExtracting(false);
     }
@@ -96,19 +116,14 @@ function BuilderContent() {
     setExtracting(true);
     setExtractedData(null);
     try {
-      await fetch(`${API_BASE_URL}/documents/${docId}/recreate_book`, { method: "POST" });
-      
-      let currentDoc = await fetchDocument(docId);
-      setDoc(currentDoc);
-      while (currentDoc.status === 'recreating_book') {
-        await new Promise(r => setTimeout(r, 3000));
-        currentDoc = await fetchDocument(docId);
-        setDoc(currentDoc);
+      await recreateBook(docId);
+      const currentDoc = await waitForDocument(docId, new Set(["recreating_book"]), setDoc);
+      if (currentDoc.status !== "book_recreated") {
+        throw new Error(currentDoc.extraction_progress || `Book recreation stopped with status: ${currentDoc.status}`);
       }
-      
-    } catch (e) {
-      console.error(e);
-      alert("Book recreation request failed.");
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : "Book recreation request failed");
     } finally {
       setExtracting(false);
     }
@@ -118,7 +133,7 @@ function BuilderContent() {
     return <div className="p-8 flex items-center justify-center h-full">Loading Builder...</div>;
   }
 
-  const page = doc?.pages?.find((p: any) => p.page_number === currentPage) || doc?.pages?.[0];
+  const page = doc?.pages?.find((candidate) => candidate.page_number === currentPage) || doc?.pages?.[0];
   const ocrLines = page?.ocr_json?.pages?.[0]?.lines || [];
 
   return (
@@ -219,7 +234,7 @@ function BuilderContent() {
               {extractedData && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded">
-                    Overall Conf: {(extractedData.confidence * 100).toFixed(1)}%
+                    Overall Conf: {((extractedData.confidence ?? 0) * 100).toFixed(1)}%
                   </span>
                   {extractedData.needs_review ? (
                      <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200/50 px-2 py-1 rounded flex items-center gap-1">
@@ -251,7 +266,7 @@ function BuilderContent() {
                   </p>
                   <Button 
                     className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
-                    onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/download_book`, '_blank')}
+                    onClick={() => window.open(documentExportUrl(docId, "download_book"), '_blank')}
                   >
                     <Download className="mr-2 h-4 w-4" /> Download Final Book (PDF)
                   </Button>
@@ -281,13 +296,13 @@ function BuilderContent() {
                       <tbody className="divide-y divide-slate-100">
                         {Object.entries(extractedData.record_data).map(([key, value]) => {
                           if (key === 'field_confidences') return null;
-                          const conf = extractedData.record_data.field_confidences?.[key];
-                          const isLow = conf < 0.95;
+                          const conf = fieldConfidence(extractedData.record_data, key);
+                          const isLow = conf !== undefined && conf < 0.95;
                           return (
                             <tr key={key} className={isLow ? "bg-amber-50/30" : ""}>
                               <td className="px-4 py-3 font-mono text-slate-600">{key}</td>
                               <td className="px-4 py-3">
-                                {typeof value === 'object' ? (
+                                {value !== null && typeof value === 'object' ? (
                                   <pre className="text-[10px] text-slate-500">{JSON.stringify(value, null, 2)}</pre>
                                 ) : (
                                   <span className="text-slate-800 font-medium">{String(value)}</span>
@@ -322,26 +337,26 @@ function BuilderContent() {
                   <Button 
                     variant="outline"
                     className="bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                    onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export/text`, '_blank')}
+                    onClick={() => window.open(documentExportUrl(docId, "export/text"), '_blank')}
                   >
                     <FileText className="mr-2 h-4 w-4" /> Raw Text
                   </Button>
                   <Button 
                     variant="outline"
                     className="bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                    onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export/searchable-pdf`, '_blank')}
+                    onClick={() => window.open(documentExportUrl(docId, "export/searchable-pdf"), '_blank')}
                   >
                     <Download className="mr-2 h-4 w-4" /> Searchable PDF
                   </Button>
                   <Button 
                     className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-                    onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export?format=xlsx`, '_blank')}
+                    onClick={() => window.open(documentExportUrl(docId, "export?format=xlsx"), '_blank')}
                   >
                     <Download className="mr-2 h-4 w-4" /> Download Excel (.xlsx)
                   </Button>
                   <Button 
                     variant="outline"
-                    onClick={() => window.open(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/documents/${docId}/export?format=csv`, '_blank')}
+                    onClick={() => window.open(documentExportUrl(docId, "export?format=csv"), '_blank')}
                   >
                     <Download className="mr-2 h-4 w-4" /> Raw CSV
                   </Button>

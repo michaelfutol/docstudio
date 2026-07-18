@@ -15,27 +15,27 @@ def extract_page_images(pdf_path, output_dir, page_num):
     Returns a list of saved image filenames.
     """
     os.makedirs(output_dir, exist_ok=True)
-    doc = fitz.open(pdf_path)
-    if page_num >= len(doc):
-        return []
-    
-    page = doc[page_num]
-    image_list = page.get_images(full=True)
     extracted_images = []
-    
-    for img_index, img in enumerate(image_list):
-        xref = img[0]
-        base_image = doc.extract_image(xref)
-        image_bytes = base_image["image"]
-        image_ext = base_image["ext"]
-        
-        image_filename = f"page_{page_num}_img_{img_index}.{image_ext}"
-        image_filepath = os.path.join(output_dir, image_filename)
-        
-        with open(image_filepath, "wb") as image_file:
-            image_file.write(image_bytes)
-            
-        extracted_images.append(image_filename)
+    with fitz.open(pdf_path) as doc:
+        if page_num >= len(doc):
+            return []
+
+        page = doc[page_num]
+        image_list = page.get_images(full=True)
+
+        for img_index, img in enumerate(image_list):
+            xref = img[0]
+            base_image = doc.extract_image(xref)
+            image_bytes = base_image["image"]
+            image_ext = base_image["ext"]
+
+            image_filename = f"page_{page_num}_img_{img_index}.{image_ext}"
+            image_filepath = os.path.join(output_dir, image_filename)
+
+            with open(image_filepath, "wb") as image_file:
+                image_file.write(image_bytes)
+
+            extracted_images.append(image_filename)
         
     return extracted_images
 
@@ -51,10 +51,18 @@ def process_recreate_book(db: Session, document_id: int):
     
     try:
         pages = db.query(models.DocumentPage).filter(models.DocumentPage.document_id == document_id).order_by(models.DocumentPage.page_number).all()
+        if not pages:
+            raise RuntimeError("Document has no processed pages")
         pdf_path = doc.file_path
         
         api_key = os.getenv("GEMINI_API_KEY")
-        client = genai.Client(api_key=api_key)
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if api_key and "YOUR_GEMINI_API_KEY" in api_key:
+            api_key = None
+        if openrouter_key and "YOUR_OPENROUTER_API_KEY" in openrouter_key:
+            openrouter_key = None
+        if not api_key and not openrouter_key:
+            raise RuntimeError("Configure GEMINI_API_KEY or OPENROUTER_API_KEY before recreating a book")
         
         exports_dir = os.path.join("exports", str(document_id))
         images_dir = os.path.join(exports_dir, "images")
@@ -93,25 +101,47 @@ Make sure you include all of them exactly where they belong based on context.
 """
 
             # Call AI
-            openrouter_key = os.getenv("OPENROUTER_API_KEY")
+            md_text = None
             if openrouter_key:
                 from openai import OpenAI
                 or_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=openrouter_key)
-                response = or_client.chat.completions.create(
-                  model="google/gemini-2.5-flash",
-                  messages=[{"role": "user", "content": prompt}],
-                  temperature=0.2
-                )
-                md_text = response.choices[0].message.content
-            else:
+                content = [{"type": "text", "text": prompt}]
+                if page.image_path and os.path.isfile(page.image_path):
+                    with open(page.image_path, "rb") as image_file:
+                        encoded = base64.b64encode(image_file.read()).decode("utf-8")
+                    extension = os.path.splitext(page.image_path)[1].lower()
+                    mime_type = "image/png" if extension == ".png" else "image/jpeg"
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime_type};base64,{encoded}"},
+                    })
+                try:
+                    response = or_client.chat.completions.create(
+                        model="google/gemini-2.5-flash",
+                        messages=[{"role": "user", "content": content}],
+                        temperature=0.2,
+                    )
+                    md_text = response.choices[0].message.content
+                except Exception:
+                    if not api_key:
+                        raise
+
+            if md_text is None:
+                client = genai.Client(api_key=api_key)
+                contents = [prompt]
+                if page.image_path and os.path.isfile(page.image_path):
+                    from PIL import Image
+                    contents.append(Image.open(page.image_path))
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=[prompt],
+                    contents=contents,
                     config=types.GenerateContentConfig(
                         temperature=0.2,
                     )
                 )
                 md_text = response.text
+            if not md_text:
+                raise RuntimeError(f"AI provider returned no content for page {page.page_number}")
             full_markdown += md_text + "\n\n---\n\n"
             
             # Respect API limits

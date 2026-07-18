@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { HardHat, Calculator, Scale, FileText, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,9 +17,9 @@ export default function IndustryLandingPage() {
   //   if (saved) router.push('/dashboard');
   // }, []);
 
-  const handleSelect = (industry: string) => {
+  const handleSelect = (industry: string, destination = "/dashboard") => {
     localStorage.setItem('selectedIndustry', industry);
-    router.push('/dashboard');
+    router.push(destination);
   };
 
   const industries = [
@@ -100,7 +99,7 @@ export default function IndustryLandingPage() {
       </div>
       
       <div className="text-center mt-12">
-        <Button variant="ghost" onClick={() => handleSelect('All')} className="text-slate-400 hover:text-slate-600">
+        <Button variant="ghost" onClick={() => handleSelect('All', '/templates')} className="text-slate-400 hover:text-slate-600">
           Skip and view all templates &rarr;
         </Button>
       </div>
