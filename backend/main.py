@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -6,14 +7,20 @@ from database import engine, Base
 from dotenv import load_dotenv
 
 # Import routers
-from routers import projects, documents, templates, records, export, stats
+from routers import projects, documents, templates, records, export, stats, settings
 
 load_dotenv()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    startup_tasks()
+    yield
+
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Document Intelligence Studio SaaS API")
+app = FastAPI(title="Document Intelligence Studio SaaS API", lifespan=lifespan)
 
 # Setup uploads directory
 os.makedirs("uploads", exist_ok=True)
@@ -28,7 +35,7 @@ allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",")] 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials=allowed_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -40,12 +47,12 @@ app.include_router(documents.router)
 app.include_router(templates.router)
 app.include_router(records.router)
 app.include_router(export.router)
+app.include_router(settings.router)
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Document Intelligence Studio API"}
 
-@app.on_event("startup")
 def startup_tasks():
     from database import SessionLocal
     from sqlalchemy import text

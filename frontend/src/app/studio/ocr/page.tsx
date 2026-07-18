@@ -1,26 +1,36 @@
 "use client";
 
-import { useState, useEffect, useRef, use } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { ChevronLeft, Save, CheckCircle, AlertTriangle, ArrowRight, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import Link from "next/link";
-import { fetchDocument } from "@/lib/api";
+import { fetchDocument, updatePageText, type DocumentPage, type OCRLine, type OCRPayload, type StudioDocument } from "@/lib/api";
 import { DocumentViewer } from "@/components/studio/document-viewer";
 import { PipelineStepper } from "@/components/ui/pipeline-stepper";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
+function findPage(document: StudioDocument, pageNumber: number): DocumentPage | undefined {
+  return document.pages.find((page) => page.page_number === pageNumber) || document.pages[0];
+}
+
+function pageLines(page: DocumentPage | undefined): OCRLine[] {
+  return page?.ocr_json?.pages?.[0]?.lines || [];
+}
+
 function OCRStudioContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const docId = searchParams.get("docId") || "";
-  const [document, setDocument] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [document, setDocument] = useState<StudioDocument | null>(null);
+  const [loading, setLoading] = useState(Boolean(docId));
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(docId ? null : "No document was selected");
   const [hoveredLineIndex, setHoveredLineIndex] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [ocrLines, setOcrLines] = useState<any[]>([]);
+  const [ocrLines, setOcrLines] = useState<OCRLine[]>([]);
   
   // Zoom states
   const [sourceZoom, setSourceZoom] = useState(1);
@@ -30,57 +40,71 @@ function OCRStudioContent() {
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
+    let cancelled = false;
+    let pollTimer: number | undefined;
+
     async function loadData() {
       try {
         const doc = await fetchDocument(docId);
+        if (cancelled) return;
         setDocument(doc);
-        if (doc && doc.pages && doc.pages.length > 0) {
-          const page = doc.pages.find((p: any) => p.page_number === currentPage) || doc.pages[0];
-          setOcrLines(page.ocr_json?.pages?.[0]?.lines || []);
+        setOcrLines(pageLines(findPage(doc, 1)));
+        setError(null);
+        if (doc.status === "processing" || doc.status === "uploaded") {
+          pollTimer = window.setTimeout(loadData, 2000);
         }
-      } catch (err) {
-        console.error(err);
+      } catch (caught) {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : "Unable to load document");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
-    
-    const interval = setInterval(() => {
-      if (document && document.status !== "processing" && document.status !== "uploaded") {
-        clearInterval(interval);
-      } else {
-        loadData();
-      }
-    }, 2000);
 
-    loadData();
+    if (docId) void loadData();
 
-    return () => clearInterval(interval);
-  }, [docId, document?.status, currentPage]);
+    return () => {
+      cancelled = true;
+      if (pollTimer) window.clearTimeout(pollTimer);
+    };
+  }, [docId]);
 
-  const handleSave = async () => {
-    if (!document) return;
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (!document) return false;
     setSaving(true);
+    setMessage(null);
+    setError(null);
     try {
-      const page = document.pages.find((p: any) => p.page_number === currentPage) || document.pages[0];
-      const updatedOcrJson = { ...page.ocr_json };
-      if (updatedOcrJson.pages && updatedOcrJson.pages.length > 0) {
+      const page = findPage(document, currentPage);
+      if (!page) throw new Error("This document has no editable page");
+      const updatedOcrJson: OCRPayload = structuredClone(page.ocr_json || { pages: [{}] });
+      if (!updatedOcrJson.pages?.length) updatedOcrJson.pages = [{}];
+      if (updatedOcrJson.pages[0]) {
         updatedOcrJson.pages[0].lines = ocrLines;
       }
-      
-      await fetch(`http://localhost:8000/api/v1/documents/${document.id}/pages/${currentPage}/text`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ocr_json: updatedOcrJson })
-      });
-      
-      // Show toast ideally, but for now just wait
-      setTimeout(() => setSaving(false), 500);
-    } catch (e) {
-      console.error(e);
+      const textContent = ocrLines.map((line) => line.text.trim()).filter(Boolean).join("\n");
+      await updatePageText(document.id, currentPage, updatedOcrJson, textContent);
+      setDocument((current) => current ? {
+        ...current,
+        pages: current.pages.map((item) => item.page_number === currentPage
+          ? { ...item, ocr_json: updatedOcrJson, text_content: textContent }
+          : item),
+      } : current);
+      setMessage("Page saved successfully");
+      return true;
+    } catch (caught) {
+      console.error(caught);
+      setError(caught instanceof Error ? caught.message : "Failed to save page");
+      return false;
+    } finally {
       setSaving(false);
     }
-  };
+  }, [currentPage, document, ocrLines]);
+
+  const handleContinue = useCallback(async () => {
+    if (await handleSave()) {
+      router.push(`/studio/builder?docId=${document?.id}`);
+    }
+  }, [document?.id, handleSave, router]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -91,24 +115,36 @@ function OCRStudioContent() {
       }
       if (e.ctrlKey && e.key === 'Enter') {
         e.preventDefault();
-        window.location.href = `/studio/builder?docId=${document?.id}`;
+        void handleContinue();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [ocrLines, document, currentPage]);
+  }, [handleContinue, handleSave]);
+
+  const handlePageChange = (pageNumber: number) => {
+    if (!document) return;
+    setCurrentPage(pageNumber);
+    setOcrLines(pageLines(findPage(document, pageNumber)));
+    setMessage(null);
+    setError(null);
+  };
 
   if (loading && !document) {
     return <div className="p-8 flex items-center justify-center h-full text-muted-foreground">Loading FutolDoc AI...</div>;
+  }
+
+  if (!document) {
+    return <div className="p-8 flex items-center justify-center h-full text-red-600">{error || "Document not found"}</div>;
   }
   
   if (document && (document.status === "processing" || document.status === "uploaded")) {
     return <div className="p-8 flex items-center justify-center h-full text-muted-foreground">OCR Processing in background... Please wait.</div>;
   }
 
-  const page = document?.pages?.find((p: any) => p.page_number === currentPage) || document?.pages?.[0];
-  const totalPages = document?.pages?.length || 1;
-  const linesReviewCount = ocrLines.filter((l: any) => l.needsReview || l.confidence < 0.8).length;
+  const page = findPage(document, currentPage);
+  const totalPages = document.pages.length || 1;
+  const linesReviewCount = ocrLines.filter((line) => line.needsReview || line.confidence < 0.8).length;
 
   const handleLineChange = (index: number, newText: string) => {
     const newLines = [...ocrLines];
@@ -138,11 +174,11 @@ function OCRStudioContent() {
               <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-green-500" /> Processed</span>
               <span>•</span>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-6 w-6" disabled={currentPage === 1} onClick={() => setCurrentPage(c => c - 1)}>
+                <Button variant="ghost" size="icon" className="h-6 w-6" disabled={currentPage === 1} onClick={() => handlePageChange(currentPage - 1)}>
                   <ChevronLeft className="h-3 w-3" />
                 </Button>
                 <span>Page {currentPage} of {totalPages}</span>
-                <Button variant="ghost" size="icon" className="h-6 w-6" disabled={currentPage === totalPages} onClick={() => setCurrentPage(c => c + 1)}>
+                <Button variant="ghost" size="icon" className="h-6 w-6" disabled={currentPage === totalPages} onClick={() => handlePageChange(currentPage + 1)}>
                   <ChevronRight className="h-3 w-3" />
                 </Button>
               </div>
@@ -157,11 +193,15 @@ function OCRStudioContent() {
             <Save className="h-4 w-4 mr-2" />
             {saving ? "Saving..." : "Save Progress (Ctrl+S)"}
           </Button>
-          <Link href={`/studio/builder?docId=${document.id}`}>
-            <Button>Approve & Continue <ArrowRight className="h-4 w-4 ml-2" /></Button>
-          </Link>
+          <Button onClick={handleContinue} disabled={saving}>Approve & Continue <ArrowRight className="h-4 w-4 ml-2" /></Button>
         </div>
       </div>
+
+      {(message || error) && (
+        <div className={`rounded-lg border px-4 py-2 text-sm ${error ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+          {error || message}
+        </div>
+      )}
 
       {/* Side by Side Workspace */}
       <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
@@ -225,14 +265,14 @@ function OCRStudioContent() {
             {ocrLines.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
                 <p className="text-slate-500 font-medium mb-2">No readable text detected.</p>
-                <p className="text-slate-400 text-sm max-w-sm">If you uploaded an image or scanned document, our backend skipped raw text extraction to save time. Don't worry, our Gemini AI will still easily read everything during the <span className="font-semibold text-primary">Extraction</span> stage! Click "Approve & Continue" to proceed.</p>
+                <p className="text-slate-400 text-sm max-w-sm">If you uploaded an image or scanned document, structured extraction can still read the page image when an AI provider is configured. Click &quot;Approve &amp; Continue&quot; to proceed.</p>
               </div>
             ) : (
               <div 
                 className="space-y-3 bg-white p-8 shadow-sm border border-slate-200/60 rounded-xl min-h-full font-mono text-sm leading-relaxed text-slate-700 transition-all origin-top-left"
                 style={{ transform: `scale(${transcriptZoom})`, width: `${100 / transcriptZoom}%`, marginBottom: `${(transcriptZoom - 1) * 100}%` }}
               >
-                {ocrLines.map((line: any, idx: number) => (
+                {ocrLines.map((line, idx) => (
                   <div 
                     key={idx} 
                     ref={(el) => { lineRefs.current[idx] = el; }}

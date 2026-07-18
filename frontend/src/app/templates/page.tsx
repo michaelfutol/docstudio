@@ -1,34 +1,56 @@
 "use client";
 
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Settings2, Trash2, Loader2, X, FileText, Trash, GripVertical, Settings } from "lucide-react";
+import { Plus, Settings2, Trash2, Loader2, X, FileText, Trash } from "lucide-react";
 import { useState, useEffect } from "react";
-import { fetchTemplates, createTemplate, updateTemplate, deleteTemplate } from "@/lib/api";
+import { fetchTemplates, createTemplate, updateTemplate, deleteTemplate, type JsonObject, type JsonValue, type Template } from "@/lib/api";
+
+interface TemplateField {
+  id: string;
+  name: string;
+  type: string;
+  description: string;
+}
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function templateFieldCount(template: Template): number {
+  const properties = template.schema_json.properties;
+  if (!isJsonObject(properties)) return 0;
+  const dataSchema = properties.data;
+  if (isJsonObject(dataSchema) && isJsonObject(dataSchema.items) && isJsonObject(dataSchema.items.properties)) {
+    return Object.keys(dataSchema.items.properties).length;
+  }
+  return Object.keys(properties).length;
+}
 
 export default function TemplatesPage() {
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [activeTab, setActiveTab] = useState("All");
 
   useEffect(() => {
     const savedIndustry = localStorage.getItem('selectedIndustry');
-    if (savedIndustry) {
-      setActiveTab(savedIndustry);
-    }
+    const timer = window.setTimeout(() => {
+      if (savedIndustry) setActiveTab(savedIndustry);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
   
   const [showModal, setShowModal] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<any>(null);
+  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   
   const [name, setName] = useState("");
   const [schemaJsonStr, setSchemaJsonStr] = useState("{\n  \"type\": \"object\",\n  \"properties\": {\n    \"field_name\": { \"type\": \"string\" }\n  }\n}");
   const [saving, setSaving] = useState(false);
 
   const [builderMode, setBuilderMode] = useState<"visual" | "json">("visual");
-  const [fields, setFields] = useState<{id: string, name: string, type: string, description: string}[]>([]);
+  const [fields, setFields] = useState<TemplateField[]>([]);
   const [isTable, setIsTable] = useState(false);
   const [templateIndustry, setTemplateIndustry] = useState("General");
 
@@ -67,6 +89,10 @@ export default function TemplatesPage() {
   const handleCreateTranscription = () => {
     setEditingTemplate(null);
     setName("Layout-Preserving Transcription");
+    setBuilderMode("json");
+    setFields([]);
+    setIsTable(false);
+    setTemplateIndustry(activeTab === "All" ? "General" : activeTab);
     setSchemaJsonStr(JSON.stringify({
       type: "object",
       properties: {
@@ -79,7 +105,7 @@ export default function TemplatesPage() {
     setShowModal(true);
   };
 
-    const handleEdit = (tpl: any) => {
+  const handleEdit = (tpl: Template) => {
     setEditingTemplate(tpl);
     setName(tpl.name);
     setTemplateIndustry(tpl.industry || "General");
@@ -88,15 +114,21 @@ export default function TemplatesPage() {
     // Try to parse into fields
     try {
       const isArray = tpl.schema_json.type === "array";
-      const props = isArray ? tpl.schema_json.items?.properties : tpl.schema_json.properties;
-      setIsTable(isArray);
-      
-      if (props && !props.data && !tpl.schema_json.properties?.data) {
+      const rootProperties = isJsonObject(tpl.schema_json.properties) ? tpl.schema_json.properties : undefined;
+      const dataSchema = rootProperties && isJsonObject(rootProperties.data) ? rootProperties.data : undefined;
+      const tableItems = dataSchema && isJsonObject(dataSchema.items) ? dataSchema.items : undefined;
+      const arrayItems = isJsonObject(tpl.schema_json.items) ? tpl.schema_json.items : undefined;
+      const propertiesValue = isArray ? arrayItems?.properties : (tableItems?.properties || rootProperties);
+      const props = isJsonObject(propertiesValue) ? propertiesValue : undefined;
+      const tableMode = isArray || dataSchema?.type === "array";
+      setIsTable(tableMode);
+
+      if (props) {
         const parsedFields = Object.keys(props).map(k => ({
           id: Math.random().toString(),
           name: k,
-          type: props[k].type || "string",
-          description: props[k].description || ""
+          type: isJsonObject(props[k]) && typeof props[k].type === "string" ? props[k].type : "string",
+          description: isJsonObject(props[k]) && typeof props[k].description === "string" ? props[k].description : ""
         }));
         setFields(parsedFields);
         setBuilderMode("visual");
@@ -124,22 +156,23 @@ export default function TemplatesPage() {
     const handleSave = async () => {
     if (!name.trim()) return;
     
-    let parsedSchema;
+    let parsedSchema: JsonObject;
     if (builderMode === "visual") {
-      const properties: any = {};
+      const properties: JsonObject = {};
       fields.forEach(f => {
         if (f.name.trim()) {
-          properties[f.name.trim()] = { type: f.type };
-          if (f.description) properties[f.name.trim()].description = f.description;
+          const definition: JsonObject = { type: f.type };
+          if (f.description) definition.description = f.description;
+          properties[f.name.trim()] = definition;
         }
       });
-      parsedSchema = isTable 
-        ? { type: "array", items: { type: "object", properties } }
+      parsedSchema = isTable
+        ? { type: "object", properties: { data: { type: "array", items: { type: "object", properties } } } }
         : { type: "object", properties };
     } else {
       try {
         parsedSchema = JSON.parse(schemaJsonStr);
-      } catch (e) {
+      } catch {
         alert("Invalid JSON schema format");
         return;
       }
@@ -148,9 +181,14 @@ export default function TemplatesPage() {
     setSaving(true);
     try {
       if (editingTemplate) {
-        await updateTemplate(editingTemplate.id, { name, schema_json: parsedSchema, industry: templateIndustry });
+        await updateTemplate(editingTemplate.id, {
+          name,
+          schema_json: parsedSchema,
+          industry: templateIndustry,
+          validation_rules: { is_tabular: isTable },
+        });
       } else {
-        await createTemplate(name, parsedSchema, templateIndustry);
+        await createTemplate(name, parsedSchema, templateIndustry, { is_tabular: isTable });
       }
       await loadTemplates();
       setShowModal(false);
@@ -219,13 +257,13 @@ export default function TemplatesPage() {
                 <div className="flex justify-between items-start">
                   <CardTitle className="text-lg font-bold tracking-tight text-slate-800">{tpl.name}</CardTitle>
                   <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded-full ${
-                    tpl.id <= 4 ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-600'
+                    tpl.is_builtin ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-600'
                   }`}>
-                    {tpl.id <= 4 ? 'Built-in' : 'Custom'}
+                    {tpl.is_builtin ? 'Built-in' : 'Custom'}
                   </span>
                 </div>
                 <CardDescription className="text-slate-500 font-medium">
-                  {Object.keys(tpl.schema_json?.properties || {}).length} defined fields
+                  {templateFieldCount(tpl)} defined fields
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-4 border-t border-slate-100 flex gap-2 bg-slate-50/50">
@@ -233,7 +271,7 @@ export default function TemplatesPage() {
                   <Settings2 className="mr-2 h-4 w-4" />
                   Configure
                 </Button>
-                {tpl.id > 4 && (
+                {!tpl.is_builtin && (
                   <Button variant="outline" className="text-xs h-9 text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600 transition-all" onClick={() => handleDelete(tpl.id)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -312,9 +350,7 @@ export default function TemplatesPage() {
                       <div key={field.id} className="flex gap-2 items-start bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
                         <div className="w-1/3">
                           <Input placeholder="Field Name (e.g. vendor_name)" value={field.name} onChange={e => {
-                            const newFields = [...fields];
-                            newFields[idx].name = e.target.value;
-                            setFields(newFields);
+                            setFields((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, name: e.target.value } : item));
                           }} />
                         </div>
                         <div className="w-1/4">
@@ -322,9 +358,7 @@ export default function TemplatesPage() {
                             className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none text-sm"
                             value={field.type}
                             onChange={e => {
-                              const newFields = [...fields];
-                              newFields[idx].type = e.target.value;
-                              setFields(newFields);
+                              setFields((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, type: e.target.value } : item));
                             }}
                           >
                             <option value="string">Text (String)</option>
@@ -334,9 +368,7 @@ export default function TemplatesPage() {
                         </div>
                         <div className="flex-1 flex gap-2">
                           <Input placeholder="Description (Optional)" value={field.description} onChange={e => {
-                            const newFields = [...fields];
-                            newFields[idx].description = e.target.value;
-                            setFields(newFields);
+                            setFields((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, description: e.target.value } : item));
                           }} />
                           <Button variant="ghost" size="icon" className="text-red-400 hover:bg-red-50 hover:text-red-500 shrink-0" onClick={() => {
                             setFields(fields.filter((_, i) => i !== idx));

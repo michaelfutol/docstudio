@@ -16,9 +16,15 @@ def process_document_ocr(db: Session, document_id: int):
         return
 
     doc.status = "processing"
+    doc.extraction_progress = "Preparing document pages..."
     db.commit()
 
     try:
+        db.query(models.DocumentPage).filter(
+            models.DocumentPage.document_id == document_id
+        ).delete(synchronize_session=False)
+        db.commit()
+
         file_ext = os.path.splitext(doc.file_path)[1].lower()
         full_text = []
 
@@ -65,13 +71,14 @@ def process_document_ocr(db: Session, document_id: int):
                 
                 # If page has no native text layer, it's a scanned PDF. Transcribe it via Gemini!
                 is_scanned = not page_text.strip()
+                source = "native_pdf"
                 if is_scanned:
+                    source = "scanned_image"
                     try:
                         api_key = os.getenv("GEMINI_API_KEY")
-                        if api_key:
+                        if api_key and "YOUR_GEMINI_API_KEY" not in api_key:
                             from google import genai
                             from google.genai import types
-                            from PIL import Image
                             client = genai.Client(api_key=api_key)
                             img = Image.open(image_path)
                             response = client.models.generate_content(
@@ -83,6 +90,7 @@ def process_document_ocr(db: Session, document_id: int):
                             )
                             if response.text:
                                 page_text = response.text
+                                source = "gemini_ocr"
                     except Exception as gemini_err:
                         print(f"Gemini page transcription failed for page {page_num+1}: {gemini_err}")
                 
@@ -116,7 +124,8 @@ def process_document_ocr(db: Session, document_id: int):
                         "confidence": 1.0,
                         "width": page.rect.width,
                         "height": page.rect.height,
-                        "lines": lines
+                        "lines": lines,
+                        "source": source,
                     }]
                 }
 
@@ -150,7 +159,8 @@ def process_document_ocr(db: Session, document_id: int):
                     "confidence": 1.0,
                     "width": width,
                     "height": height,
-                    "lines": [] # No lines, Gemini handles it
+                    "lines": [], # No lines, the extraction provider handles it.
+                    "source": "image",
                 }]
             }
             
@@ -171,9 +181,11 @@ def process_document_ocr(db: Session, document_id: int):
             f.write("\n\n".join(full_text))
 
         doc.status = "processed"
+        doc.extraction_progress = "OCR complete"
         db.commit()
 
     except Exception as e:
         print(f"Processing Error: {e}")
         doc.status = "failed"
+        doc.extraction_progress = f"Failed: {e}"
         db.commit()

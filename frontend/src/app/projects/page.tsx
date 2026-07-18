@@ -1,19 +1,18 @@
 "use client";
 
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, Folder, Download, UploadCloud, Loader2, X, Trash2 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useEffect } from "react";
-import { uploadDocument, fetchProjects, createProject, exportProject, deleteProject } from "@/lib/api";
+import { uploadDocument, fetchProjects, createProject, exportProject, deleteProject, type Project } from "@/lib/api";
 import { ExportModal } from "@/components/ui/export-modal";
 
 export default function ProjectsPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Search and Filter state
@@ -22,9 +21,12 @@ export default function ProjectsPage() {
   
   useEffect(() => {
     const savedIndustry = localStorage.getItem('selectedIndustry');
-    if (savedIndustry) {
-      setActiveTab(savedIndustry);
-    }
+    const requestedSearch = new URLSearchParams(window.location.search).get("search");
+    const timer = window.setTimeout(() => {
+      if (savedIndustry) setActiveTab(savedIndustry);
+      if (requestedSearch) setSearchQuery(requestedSearch);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
   
   // Upload state
@@ -121,9 +123,10 @@ export default function ProjectsPage() {
       a.download = `${exportProjectName.replace(/\s+/g, '_')}_export.${format}`;
       document.body.appendChild(a);
       a.click();
+      a.remove();
       window.URL.revokeObjectURL(url);
-    } catch (e) {
-      alert("Failed to export project. It might not contain any approved records.");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to export project");
     }
   };
 
@@ -132,8 +135,8 @@ export default function ProjectsPage() {
       try {
         await deleteProject(projectId);
         await loadProjects();
-      } catch (e) {
-        alert("Failed to delete project");
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Failed to delete project");
       }
     }
   };

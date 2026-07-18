@@ -1,6 +1,6 @@
 import os
 import uuid
-import shutil
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
@@ -8,11 +8,49 @@ from database import get_db
 import models
 import schemas
 from typing import Optional
-from ocr_service import process_document_ocr
-from extraction_service import extract_structured_data
-import book_engine
+from file_utils import cleanup_document_files, invalidate_searchable_exports, safe_download_name
+from tasks import run_book_recreation, run_document_ocr, run_extraction
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+
+ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp"}
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "50")) * 1024 * 1024
+
+
+def _insert_invisible_text_layer(pdf_page, db_page) -> None:
+    text = (db_page.text_content or "").strip()
+    if not text:
+        return
+
+    margin_x = pdf_page.rect.width * 0.12
+    margin_y = pdf_page.rect.height * 0.08
+    text_rect = pdf_page.rect + (margin_x, margin_y, -margin_x, -margin_y)
+
+    # PyMuPDF returns a negative value when text does not fit. Reduce the font
+    # until a complete invisible layer can be inserted.
+    for font_size in (9, 8, 7, 6, 5, 4):
+        result = pdf_page.insert_textbox(
+            text_rect,
+            text,
+            render_mode=3,
+            fontsize=font_size,
+        )
+        if result >= 0:
+            return
+
+    # Last-resort searchable layer for unusually dense pages.
+    cursor_y = margin_y + 5
+    for line in text.splitlines():
+        if cursor_y >= pdf_page.rect.height - margin_y:
+            break
+        if line.strip():
+            pdf_page.insert_text(
+                (margin_x, cursor_y),
+                line[:500],
+                render_mode=3,
+                fontsize=4,
+            )
+        cursor_y += 5
 
 @router.post("")
 @router.post("/")
@@ -22,28 +60,60 @@ def upload_document(
     project_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    # Save file
-    file_ext = file.filename.split(".")[-1] if "." in file.filename else "pdf"
+    if project_id is not None:
+        project = db.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+    original_name = safe_download_name(file.filename or "document")
+    file_ext = Path(original_name).suffix.lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        supported = ", ".join(sorted(ALLOWED_EXTENSIONS))
+        raise HTTPException(status_code=415, detail=f"Unsupported file type. Supported types: {supported}")
+
     file_id = str(uuid.uuid4())
-    file_path = f"uploads/{file_id}.{file_ext}"
-    
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    file_path = Path("uploads") / f"{file_id}{file_ext}"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    size = 0
+    try:
+        with file_path.open("wb") as buffer:
+            while chunk := file.file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit",
+                    )
+                buffer.write(chunk)
+    except Exception:
+        if file_path.exists():
+            file_path.unlink()
+        raise
+
+    if size == 0:
+        file_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
     # Create document record
     doc = models.Document(
-        filename=file.filename,
-        file_path=file_path,
+        filename=original_name,
+        file_path=str(file_path),
         project_id=project_id,
         status="uploaded",
         doc_type="unknown"
     )
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
+    try:
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+    except Exception:
+        db.rollback()
+        file_path.unlink(missing_ok=True)
+        raise
 
     # Trigger OCR background task
-    background_tasks.add_task(process_document_ocr, db, doc.id)
+    background_tasks.add_task(run_document_ocr, doc.id)
 
     return {"message": "Document uploaded successfully", "document_id": doc.id}
 
@@ -70,7 +140,23 @@ def trigger_extraction(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
-    background_tasks.add_task(extract_structured_data, db, document_id, req.template_id)
+    doc = db.query(models.Document).filter(models.Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    template = db.query(models.Template).filter(models.Template.id == req.template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if doc.status in {"uploaded", "processing", "extracting", "recreating_book"}:
+        raise HTTPException(status_code=409, detail=f"Document is currently {doc.status.replace('_', ' ')}")
+    if doc.status == "failed":
+        raise HTTPException(status_code=409, detail="Document processing failed; upload the document again")
+    if not doc.pages:
+        raise HTTPException(status_code=409, detail="Document has no processed pages")
+
+    doc.status = "extracting"
+    doc.extraction_progress = "Extraction queued..."
+    db.commit()
+    background_tasks.add_task(run_extraction, document_id, req.template_id)
     return {"message": "Extraction started in background"}
 
 @router.get("/{document_id}/record")
@@ -90,6 +176,18 @@ def update_page_text(document_id: int, page_number: int, req: schemas.PageTextUp
         raise HTTPException(status_code=404, detail="Page not found")
     
     page.ocr_json = req.ocr_json
+    if req.text_content is not None:
+        page.text_content = req.text_content
+    else:
+        lines = req.ocr_json.get("pages", [{}])[0].get("lines", [])
+        page.text_content = "\n".join(
+            str(line.get("text", "")).strip()
+            for line in lines
+            if str(line.get("text", "")).strip()
+        )
+    doc = db.query(models.Document).filter(models.Document.id == document_id).first()
+    if doc:
+        invalidate_searchable_exports(doc)
     db.commit()
     return {"message": "Page text updated"}
 
@@ -119,21 +217,7 @@ def export_searchable_pdf(document_id: int, db: Session = Depends(get_db)):
                     if db_page and db_page.text_content:
                         # Check if page already has text. If not, inject the database text_content
                         if not page.get_text().strip():
-                            # Inject text invisibly with book margins (12% horizontal, 8% vertical)
-                            margin_x = page.rect.width * 0.12
-                            margin_y = page.rect.height * 0.08
-                            text_rect = fitz.Rect(
-                                margin_x,
-                                margin_y,
-                                page.rect.width - margin_x,
-                                page.rect.height - margin_y
-                            )
-                            page.insert_textbox(
-                                text_rect,
-                                db_page.text_content,
-                                render_mode=3,
-                                fontsize=9
-                            )
+                            _insert_invisible_text_layer(page, db_page)
                 
                 pdf_doc.save(searchable_path)
                 pdf_doc.close()
@@ -163,20 +247,7 @@ def export_searchable_pdf(document_id: int, db: Session = Depends(get_db)):
                 for p_idx, page in enumerate(pdf_doc):
                     db_page = next((p for p in pages if p.page_number == p_idx + 1), None)
                     if db_page and db_page.text_content:
-                        margin_x = page.rect.width * 0.12
-                        margin_y = page.rect.height * 0.08
-                        text_rect = fitz.Rect(
-                            margin_x,
-                            margin_y,
-                            page.rect.width - margin_x,
-                            page.rect.height - margin_y
-                        )
-                        page.insert_textbox(
-                            text_rect,
-                            db_page.text_content,
-                            render_mode=3,
-                            fontsize=9
-                        )
+                        _insert_invisible_text_layer(page, db_page)
                 pdf_doc.save(searchable_path)
                 pdf_doc.close()
             except Exception as e:
@@ -203,10 +274,12 @@ def get_processing_report(document_id: int, db: Session = Depends(get_db)):
     for p in pages:
         has_text = bool(p.text_content and p.text_content.strip())
         
-        is_ai_ocr = False
-        lines = p.ocr_json.get("pages", [{}])[0].get("lines", []) if p.ocr_json else []
-        if lines and lines[0].get("confidence") == 0.95:
-            is_ai_ocr = True
+        page_metadata = p.ocr_json.get("pages", [{}])[0] if p.ocr_json else {}
+        source_name = page_metadata.get("source")
+        lines = page_metadata.get("lines", [])
+        is_ai_ocr = source_name == "gemini_ocr" or (
+            not source_name and lines and lines[0].get("confidence") == 0.95
+        )
             
         if has_text:
             source = "AI OCR (Gemini)" if is_ai_ocr else "Native PDF Text"
@@ -242,13 +315,15 @@ def export_text(document_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Document not found")
         
     # 1. Check if there's an AI extraction with a full_transcription
-    record = db.query(models.ExtractedRecord).filter(models.ExtractedRecord.document_id == document_id).first()
+    record = db.query(models.ExtractedRecord).filter(
+        models.ExtractedRecord.document_id == document_id
+    ).order_by(models.ExtractedRecord.id.desc()).first()
     if record and record.record_data and "full_transcription" in record.record_data:
         text_content = record.record_data["full_transcription"]
         return Response(
             content=text_content,
             media_type="text/plain",
-            headers={"Content-Disposition": f'attachment; filename="{doc.filename}_transcription.txt"'}
+            headers={"Content-Disposition": f'attachment; filename="{safe_download_name(doc.filename)}_transcription.txt"'}
         )
         
     # 2. Check if we have transcribed pages in the database
@@ -262,7 +337,7 @@ def export_text(document_id: int, db: Session = Depends(get_db)):
         return Response(
             content=db_text.strip(),
             media_type="text/plain",
-            headers={"Content-Disposition": f'attachment; filename="{doc.filename}_ocr_text.txt"'}
+            headers={"Content-Disposition": f'attachment; filename="{safe_download_name(doc.filename)}_ocr_text.txt"'}
         )
         
     # 3. Fallback to raw OCR text file
@@ -274,7 +349,7 @@ def export_text(document_id: int, db: Session = Depends(get_db)):
     return Response(
         content=helpful_message,
         media_type="text/plain",
-        headers={"Content-Disposition": f'attachment; filename="{doc.filename}_no_text.txt"'}
+        headers={"Content-Disposition": f'attachment; filename="{safe_download_name(doc.filename)}_no_text.txt"'}
     )
 
 @router.delete("/{document_id}")
@@ -283,36 +358,11 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Try to delete associated files physically
     try:
-        base_dir = os.path.dirname(doc.file_path)
-        
-        # Original file
-        if os.path.exists(doc.file_path):
-            os.remove(doc.file_path)
-            
-        # Converted pdf (if image)
-        conv_pdf = os.path.join(base_dir, f"{doc.id}_converted.pdf")
-        if os.path.exists(conv_pdf):
-            os.remove(conv_pdf)
-            
-        # Raw text
-        raw_txt = os.path.join(base_dir, f"{doc.id}_raw.txt")
-        if os.path.exists(raw_txt):
-            os.remove(raw_txt)
-            
-        # Clean up any generated page images
-        base_name_pdf = os.path.basename(doc.file_path).replace('.pdf', '')
-        base_name_img = os.path.basename(doc.file_path).rsplit('.', 1)[0]
-        
-        for file in os.listdir(base_dir):
-            if file.startswith(base_name_pdf + "_page_") or file.startswith(base_name_img + "_page_"):
-                os.remove(os.path.join(base_dir, file))
-                
-    except Exception as e:
-        print(f"Error during file cleanup: {e}")
+        cleanup_document_files(doc)
+    except OSError as exc:
+        print(f"Error during file cleanup: {exc}")
         # We proceed to delete from DB even if file cleanup fails partially
-        pass
 
     db.delete(doc)
     db.commit()
@@ -325,8 +375,21 @@ def recreate_book(doc_id: int, background_tasks: BackgroundTasks, db: Session = 
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
         
-    # Queue background task
-    background_tasks.add_task(book_engine.process_recreate_book, db, doc_id)
+    if doc.status in {"uploaded", "processing", "extracting", "recreating_book"}:
+        raise HTTPException(status_code=409, detail=f"Document is currently {doc.status.replace('_', ' ')}")
+    pages = db.query(models.DocumentPage).filter(models.DocumentPage.document_id == doc_id).all()
+    if not pages or not any((page.text_content or "").strip() or page.image_path for page in pages):
+        raise HTTPException(status_code=400, detail="No processed page content is available for book recreation")
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    if gemini_key and "YOUR_GEMINI_API_KEY" in gemini_key:
+        gemini_key = None
+    if openrouter_key and "YOUR_OPENROUTER_API_KEY" in openrouter_key:
+        openrouter_key = None
+    if not gemini_key and not openrouter_key:
+        raise HTTPException(status_code=503, detail="Configure GEMINI_API_KEY or OPENROUTER_API_KEY before recreating a book")
+
+    background_tasks.add_task(run_book_recreation, doc_id)
     
     # Update immediate status
     doc.status = "recreating_book"
@@ -341,8 +404,18 @@ def download_recreated_book(doc_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
         
-    # Prefer edited/approved record transcription if available
-    record = db.query(models.ExtractedRecord).filter(models.ExtractedRecord.document_id == doc_id).first()
+    recreated_path = os.path.join("exports", str(doc_id), "recreated_book.pdf")
+    if os.path.isfile(recreated_path):
+        return FileResponse(
+            recreated_path,
+            media_type="application/pdf",
+            filename=f"Recreated_{safe_download_name(doc.filename)}.pdf",
+        )
+
+    # Prefer the latest edited/approved transcription if available.
+    record = db.query(models.ExtractedRecord).filter(
+        models.ExtractedRecord.document_id == doc_id
+    ).order_by(models.ExtractedRecord.id.desc()).first()
     
     full_markdown = ""
     if record and record.record_data and "full_transcription" in record.record_data:
@@ -401,5 +474,5 @@ def download_recreated_book(doc_id: int, db: Session = Depends(get_db)):
     return Response(
         content=output.getvalue(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="Recreated_{doc.filename}.pdf"'}
+        headers={"Content-Disposition": f'attachment; filename="Recreated_{safe_download_name(doc.filename)}.pdf"'}
     )

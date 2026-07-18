@@ -4,10 +4,17 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, CheckCircle2, XCircle, Eye, AlertCircle, Database, Loader2 } from "lucide-react";
-import { fetchPendingRecords, updateRecordStatus } from "@/lib/api";
+import { fetchPendingRecords, updateRecordStatus, type ExtractedRecord, type JsonObject } from "@/lib/api";
+
+function fieldConfidence(recordData: JsonObject, key: string): number | undefined {
+  const confidences = recordData.field_confidences;
+  if (!confidences || Array.isArray(confidences) || typeof confidences !== "object") return undefined;
+  const value = confidences[key];
+  return typeof value === "number" ? value : undefined;
+}
 
 export default function ReviewQueuePage() {
-  const [records, setRecords] = useState<any[]>([]);
+  const [records, setRecords] = useState<ExtractedRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -17,31 +24,27 @@ export default function ReviewQueuePage() {
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
 
   useEffect(() => {
-    loadRecords();
+    let cancelled = false;
+    fetchPendingRecords()
+      .then((data) => {
+        if (!cancelled) setRecords(data);
+      })
+      .catch((error: unknown) => console.error("Failed to load records:", error))
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  async function loadRecords() {
-    try {
-      const data = await fetchPendingRecords();
-      setRecords(data);
-    } catch (err) {
-      console.error("Failed to load records:", err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const handleAction = useCallback(async (recordId: number, status: string) => {
+  const handleAction = useCallback(async (recordId: number, status: "approved" | "rejected") => {
     setActionLoading(recordId);
     try {
       await updateRecordStatus(recordId, status);
       // Remove from the list after action
-      setRecords(prev => {
-        const filtered = prev.filter(r => r.id !== recordId);
-        // Adjust selected index if needed
-        setSelectedIndex(current => Math.min(current, Math.max(0, filtered.length - 1)));
-        return filtered;
-      });
+      setRecords((current) => current.filter((record) => record.id !== recordId));
+      setSelectedIndex((current) => Math.max(0, current - 1));
     } catch (err) {
       console.error("Failed to update record:", err);
     } finally {
@@ -59,7 +62,8 @@ export default function ReviewQueuePage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (filteredRecords.length === 0) return;
       
-      const record = filteredRecords[selectedIndex];
+      const record = filteredRecords[Math.min(selectedIndex, filteredRecords.length - 1)];
+      if (!record) return;
       
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -117,14 +121,14 @@ export default function ReviewQueuePage() {
               variant="outline"
               className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
               onClick={async () => {
-                const highConf = records.filter(r => r.confidence >= 0.90);
+                const highConf = records.filter(r => (r.confidence ?? 0) >= 0.90);
                 for (const r of highConf) {
                   await handleAction(r.id, "approved");
                 }
               }}
             >
               <CheckCircle2 className="h-4 w-4 mr-2" />
-              Bulk Approve High Confidence ({records.filter(r => r.confidence >= 0.90).length})
+              Bulk Approve High Confidence ({records.filter(r => (r.confidence ?? 0) >= 0.90).length})
             </Button>
           </div>
         )}
@@ -171,7 +175,7 @@ export default function ReviewQueuePage() {
               <tbody>
                 {filteredRecords.map((row, idx) => {
                   const isSelected = selectedIndex === idx;
-                  const overallConf = row.confidence;
+                  const overallConf = row.confidence ?? 0;
                   
                   return (
                     <React.Fragment key={row.id}>
@@ -260,8 +264,8 @@ export default function ReviewQueuePage() {
                                   <tbody className="divide-y divide-slate-100">
                                     {Object.entries(row.record_data).map(([key, value]) => {
                                       if (key === 'field_confidences') return null;
-                                      const conf = row.record_data.field_confidences?.[key];
-                                      const isLow = conf < 0.95;
+                                      const conf = fieldConfidence(row.record_data, key);
+                                      const isLow = conf !== undefined && conf < 0.95;
                                       return (
                                         <tr key={key} className={isLow ? "bg-amber-50/30" : ""}>
                                           <td className="px-3 py-2 font-mono text-slate-600">{key}</td>

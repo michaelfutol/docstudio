@@ -45,7 +45,7 @@ def update_record_status(record_id: int, req: schemas.RecordStatusUpdate, db: Se
         raise HTTPException(status_code=404, detail="Record not found")
     
     record.status = req.status
-    if req.record_data:
+    if req.record_data is not None:
         record.record_data = req.record_data
         
     # Update parent document status to match

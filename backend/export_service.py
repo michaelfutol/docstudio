@@ -207,10 +207,10 @@ def _format_records(records, format_type: str):
         
     elif format_type == 'pdf':
         try:
-            from PyPDF2 import PdfMerger
+            from pypdf import PdfWriter
             import os
             
-            merger = PdfMerger()
+            merger = PdfWriter()
             has_pdfs = False
             
             for r in records:
@@ -219,7 +219,7 @@ def _format_records(records, format_type: str):
                 # Actually, `r` has a relationship `r.document` if defined in SQLAlchemy models.
                 doc = r.document
                 pdf_path = doc.file_path
-                if os.path.exists(pdf_path) and pdf_path.endswith('.pdf'):
+                if os.path.exists(pdf_path) and pdf_path.lower().endswith('.pdf'):
                     merger.append(pdf_path)
                     has_pdfs = True
             
@@ -231,8 +231,8 @@ def _format_records(records, format_type: str):
             merger.close()
             
             return {"data": output.getvalue(), "type": "application/pdf", "filename": "export.pdf"}
-        except Exception as e:
-            print(f"Error generating PDF export: {e}")
+        except Exception as exc:
+            print(f"Error generating PDF export: {exc}")
             return None
 
     return None

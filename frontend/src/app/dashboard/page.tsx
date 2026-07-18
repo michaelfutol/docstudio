@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Database, AlertCircle, CheckCircle, Activity, Zap, Trash2, X, Loader2 } from "lucide-react";
+import { FileText, Plus, Database, AlertCircle, Zap, Trash2, X, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { fetchProjects, fetchStats, deleteDocument, createProject } from "@/lib/api";
+import { fetchProjects, fetchStats, deleteDocument, createProject, type Project, type StudioStats } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<any>(null);
-  const [projects, setProjects] = useState<any[]>([]);
+  const [stats, setStats] = useState<StudioStats | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Modals state
@@ -20,7 +20,7 @@ export default function DashboardPage() {
   const [newProjectIndustry, setNewProjectIndustry] = useState("General");
   const [creatingProject, setCreatingProject] = useState(false);
 
-  const loadStats = async () => {
+  const refreshDashboard = async () => {
     try {
       const data = await fetchStats();
       setStats(data);
@@ -36,7 +36,21 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    loadStats();
+    let cancelled = false;
+    Promise.all([fetchStats(), fetchProjects()])
+      .then(([statsData, projectData]) => {
+        if (!cancelled) {
+          setStats(statsData);
+          setProjects(projectData.slice(0, 5));
+        }
+      })
+      .catch((error: unknown) => console.error(error))
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleCreateProject = async () => {
@@ -44,7 +58,7 @@ export default function DashboardPage() {
     setCreatingProject(true);
     try {
       await createProject(newProjectName, newProjectDesc, newProjectIndustry);
-      await loadStats();
+      await refreshDashboard();
       setShowCreateModal(false);
       setNewProjectName("");
       setNewProjectDesc("");
@@ -62,7 +76,7 @@ export default function DashboardPage() {
       try {
         await deleteDocument(id);
         // Refresh data
-        loadStats();
+      await refreshDashboard();
       } catch (e) {
         alert("Failed to delete document");
         console.error(e);
@@ -207,8 +221,8 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 ))
-              ) : stats?.recent_documents?.length > 0 ? (
-                stats.recent_documents.map((doc: any, i: number) => (
+              ) : stats && stats.recent_documents.length > 0 ? (
+                stats.recent_documents.map((doc, i) => (
                   <div key={i} className="flex items-center gap-3 py-2 group">
                     <div className="bg-slate-100 p-2 rounded-full text-slate-500">
                       <FileText className="h-4 w-4" />
